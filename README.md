@@ -86,9 +86,16 @@ docker run --rm \
   rz-builder bash /host/build-all.sh
 ```
 
-The finished image is written to `/work/radxa-zero-archlinux-<kernel-version>.img.xz` (mounted from `rz-build`). The kernel version in the filename is **auto-detected** from the build (`make kernelrelease`), e.g. `radxa-zero-archlinux-7.3.0-rc6.img.xz` — so when you bump the kernel version, the image name updates automatically and each build is easy to tell apart.
+The build produces **two image variants** (the CI builds them in parallel):
 
-The GitHub Actions workflow also picks up the kernel version and uses it in the artifact and release names (e.g. *Radxa Zero Arch Linux (kernel 7.3.0-rc6)*).
+| Variant | Kernel | For |
+|---|---|---|
+| **stable** | latest stable series (e.g. `7.2.9`) | reliability — recommended for daily use |
+| **latest** | newest mainline (e.g. `7.3-rc6`) | newest drivers/features — for testing |
+
+Set `KERNEL_VERSION` / `VARIANT` to override the kernel each variant builds.
+
+Images are named `radxa-zero-archlinux-<variant>-<kernel-version>.img.xz` — the kernel version is **auto-detected** from the build (`make kernelrelease`), e.g. `radxa-zero-archlinux-stable-7.2.9.img.xz` and `radxa-zero-archlinux-latest-7.3.0-rc6.img.xz`, so when you bump the kernel the name updates automatically and each build is easy to tell apart. The GitHub Actions release includes both variants and lists their kernel versions in the changelog.
 
 ## Project layout
 

@@ -13,13 +13,24 @@ echo "=== Build start: $(date -u) | jobs=$NPROC ==="
 
 cd /work
 
-### 1. Kernel source (7.3-rc6) ##############################################
-echo "=== [1/8] Download kernel 7.3-rc6 ==="
+### 1. Kernel source ########################################################
+# KERNEL_VERSION / VARIANT are overridable so the same script builds both the
+# stable and the latest image (the CI runs a stable/latest matrix).
+KERNEL_VERSION="${KERNEL_VERSION:-7.3-rc6}"
+VARIANT="${VARIANT:-latest}"
+MAJ="${KERNEL_VERSION%%.*}"
+# RC releases live in kernel.org's testing/ dir, stable releases in vN.x/
+if [[ "$KERNEL_VERSION" == *-rc* ]]; then
+  KURL="https://cdn.kernel.org/pub/linux/kernel/v${MAJ}.x/testing/linux-${KERNEL_VERSION}.tar.xz"
+else
+  KURL="https://cdn.kernel.org/pub/linux/kernel/v${MAJ}.x/linux-${KERNEL_VERSION}.tar.xz"
+fi
+echo "=== [1/8] Download kernel $KERNEL_VERSION ($VARIANT) ==="
 if [ ! -d linux-src ]; then
   mkdir -p linux-src
-  ( wget -q https://cdn.kernel.org/pub/linux/kernel/v7.x/testing/linux-7.3-rc6.tar.xz \
-    || wget -q https://git.kernel.org/torvalds/t/linux-7.3-rc6.tar.gz ) || { echo "FATAL: kernel download failed"; exit 1; }
-  tar xf linux-7.3-rc6.tar.* -C linux-src --strip-components=1
+  ( wget -q "$KURL" \
+    || wget -q "https://git.kernel.org/torvalds/t/linux-${KERNEL_VERSION}.tar.gz" ) || { echo "FATAL: kernel download failed"; exit 1; }
+  tar xf linux-${KERNEL_VERSION}.tar.* -C linux-src --strip-components=1
 fi
 cd linux-src
 

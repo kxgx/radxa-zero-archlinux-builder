@@ -6,8 +6,9 @@ echo "=== repack $(date -u) ==="
 cd /work
 
 KREL=$(make -s -C linux-src kernelrelease)
+VARIANT="${VARIANT:-latest}"
 ROOTUUID=$(grep -oE 'UUID=[0-9a-f-]+' rootfs/etc/fstab | head -1 | cut -d= -f2)
-echo "KREL=$KREL ROOTUUID=$ROOTUUID"
+echo "KREL=$KREL VARIANT=$VARIANT ROOTUUID=$ROOTUUID"
 
 rm -rf bootfs; mkdir -p bootfs/extlinux
 cp linux-src/arch/arm64/boot/Image bootfs/Image
@@ -79,7 +80,7 @@ dd if=root.img of=final.img bs=512 seek=$ROOT_START conv=notrunc status=none
 sync
 
 fdisk -l final.img || true
-IMGFILE=radxa-zero-archlinux-${KREL}.img
+IMGFILE=radxa-zero-archlinux-${VARIANT}-${KREL}.img
 mv final.img "$IMGFILE"
 echo "Compressing (xz -6)..."
 xz -T0 -6 -kf "$IMGFILE"

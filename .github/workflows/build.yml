@@ -4,7 +4,6 @@ on:
   push:
     branches: [main, master]
     tags: ['v*']
-    # 纯文档变更不触发构建
     paths-ignore:
       - '*.md'
       - '**/*.md'
@@ -14,12 +13,10 @@ on:
       - '**/*.md'
   workflow_dispatch:
 
-# 同一分支/PR 的新提交取消旧运行（deskflow / remilia_pet_qt 同款）
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# 最小权限原则：默认只读，发布 job 单独开 write
 permissions:
   contents: read
 
@@ -45,7 +42,6 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then BASE="${{ github.base_ref }}"; fi
           git fetch --no-tags origin "$BASE" 2>/dev/null || true
           if ! git rev-parse --verify "origin/$BASE" >/dev/null 2>&1; then
-            # 无法确定基线时按代码变更处理（宁可编译，不可漏编译）
             echo "code=true" >> "$GITHUB_OUTPUT"
           elif git diff --name-only "origin/$BASE...HEAD" -- . ':(exclude)*.md' ':(exclude)**/*.md' ':(exclude).github/**' > /tmp/changed.txt 2>/dev/null; then
             if [ -s /tmp/changed.txt ]; then echo "code=true" >> "$GITHUB_OUTPUT"; else echo "code=false" >> "$GITHUB_OUTPUT"; fi
@@ -88,18 +84,23 @@ jobs:
         run: docker build -t rz-builder .
 
   # ============================================================
-  # 二、构建 SD 镜像（重：完整构建，仅 tag / 手动触发）
+  # 二、构建 SD 镜像：稳定版 + 最新版 并行矩阵（仅 tag / 手动）
   # ============================================================
   build-image:
-    name: 构建 SD 镜像
+    name: 构建 SD 镜像 (${{ matrix.variant }})
     needs: [checks]
     # 完整镜像构建较慢（下载内核/rootfs/官方 bootloader + 交叉编译），
-    # 仅在 tag、手动触发时执行；日常 push/PR 只跑静态检查。
+    # 仅在 tag、手动触发时执行；稳定版与最新版并行构建。
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
-    outputs:
-      kver: ${{ steps.kver.outputs.kver }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 稳定版：当前最新稳定内核；最新版：最新主线（含 RC）
+          - { variant: stable, kernel: 7.2.9 }
+          - { variant: latest, kernel: 7.3-rc6 }
     permissions:
       contents: read
     steps:
@@ -109,37 +110,36 @@ jobs:
         run: docker build -t rz-builder .
 
       - name: 完整镜像构建（build-all.sh）
-        run: docker run --rm -v rz-build:/work -v "$PWD":/host:ro rz-builder bash /host/build-all.sh
+        env:
+          KERNEL_VERSION: ${{ matrix.kernel }}
+          VARIANT: ${{ matrix.variant }}
+        run: docker run --rm -e KERNEL_VERSION -e VARIANT -v rz-build:/work -v "$PWD":/host:ro rz-builder bash /host/build-all.sh
 
       - name: 自动检测内核版本
         id: kver
         run: |
           KVER=$(docker run --rm -v rz-build:/work rz-builder make -s -C /work/linux-src kernelrelease)
           echo "kver=$KVER" >> "$GITHUB_OUTPUT"
-          echo "检测到内核版本: $KVER"
+          echo "变体 ${{ matrix.variant }} 检测到内核版本: $KVER"
 
       - name: 收集镜像产物
         run: |
-          docker run --rm -v rz-build:/work -v "$PWD":/host rz-builder bash -c 'cp /work/radxa-zero-archlinux-*.img.xz /work/SHA256SUMS.txt /host/ 2>/dev/null || true'
+          docker run --rm -v rz-build:/work -v "$PWD":/host rz-builder bash -c 'cp /work/radxa-zero-archlinux-*.img.xz /host/ 2>/dev/null || true'
           ls -la radxa-zero-archlinux-*.img.xz
-          sha256sum radxa-zero-archlinux-*.img.xz | tee sums.txt
 
       - name: 上传镜像构件
         uses: actions/upload-artifact@v6
         with:
-          name: radxa-zero-archlinux-image-${{ steps.kver.outputs.kver }}
-          path: |
-            radxa-zero-archlinux-*.img.xz
-            sums.txt
+          name: radxa-zero-archlinux-${{ matrix.variant }}-${{ steps.kver.outputs.kver }}
+          path: radxa-zero-archlinux-*.img.xz
           retention-days: 14
 
   # ============================================================
-  # 三、发布（仅官方仓库的 tag 触发）
+  # 三、发布（仅官方仓库的 tag 触发）：稳定版 + 最新版一起发布
   # ============================================================
   release:
     name: 发布
     needs: [checks, build-image]
-    # 发布门禁：仅官方仓库的 tag 触发（防误发布）
     if: startsWith(github.ref, 'refs/tags/') && github.repository == 'kxgx/radxa-zero-archlinux-builder'
     runs-on: ubuntu-latest
     permissions:
@@ -152,17 +152,23 @@ jobs:
 
       - uses: actions/download-artifact@v7
         with:
-          name: radxa-zero-archlinux-image-${{ needs.build-image.outputs.kver }}
+          pattern: radxa-zero-archlinux-*
+          merge-multiple: true
 
-      - name: 生成变更摘要
+      - name: 生成校验和与变更摘要
         run: |
+          sha256sum radxa-zero-archlinux-*.img.xz > sums.txt
           CHANGES=$(git log --abbrev=8 --abbrev-commit --pretty=format:" - %s(%h) by %an" -15)
-          { echo "## 内核版本: ${{ needs.build-image.outputs.kver }}"; echo; echo "## 最近变更:"; echo "$CHANGES"; } > changelog.txt
+          {
+            echo "## 镜像（文件名含自动检测的内核版本）:"
+            for f in radxa-zero-archlinux-*.img.xz; do echo "- $f"; done
+            echo; echo "## 最近变更:"; echo "$CHANGES"
+          } > changelog.txt
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          name: Radxa Zero Arch Linux (kernel ${{ needs.build-image.outputs.kver }})
+          name: Radxa Zero Arch Linux ${{ github.ref_name }}
           files: |
             radxa-zero-archlinux-*.img.xz
             sums.txt
@@ -172,7 +178,7 @@ jobs:
           make_latest: true
 
   # ============================================================
-  # 四、质量门：静态检查 +（如执行）镜像构建都通过才算通过
+  # 四、质量门：静态检查 +（如执行）双镜像构建都通过才算通过
   # ============================================================
   ci-passed:
     name: 质量门
@@ -193,7 +199,7 @@ jobs:
           | 项目 | 结果 |
           |------|------|
           | 静态检查（lint/语法/机密） | $(disp "${{ needs.checks.result }}") |
-          | SD 镜像构建 | $(disp "${{ needs.build-image.result }}") |
+          | SD 镜像构建（稳定版+最新版） | $(disp "${{ needs.build-image.result }}") |
           EOF
           if [ "$FAIL" = "1" ]; then echo "❌ 存在失败任务" >> "$GITHUB_STEP_SUMMARY"; exit 1; fi
           echo "✅ 通过" >> "$GITHUB_STEP_SUMMARY"
