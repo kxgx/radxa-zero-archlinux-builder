@@ -178,71 +178,9 @@ mv -f u-boot.bin u-boot.bin.sd.bin
 ls -la u-boot.bin.sd.bin
 cd /work
 
-### 8. Image assembly ########################################################
-echo "=== [8/8] Image assembly ==="
-mkdir -p bootfs/extlinux
-cp linux-src/arch/arm64/boot/Image bootfs/Image
-cp linux-src/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dtb bootfs/
-cat > bootfs/extlinux/extlinux.conf <<EOF
-DEFAULT radxa-zero-arch
-TIMEOUT 20
 
-LABEL radxa-zero-arch
-  KERNEL /Image
-  FDT /meson-g12a-radxa-zero.dtb
-  APPEND root=UUID=$ROOTUUID rootwait rw console=ttyAML0,115200 no_console_suspend
-EOF
-
-mkfs.vfat -F 32 -n BOOT -C boot.img 524288
-mmd -i boot.img ::/extlinux
-mcopy -i boot.img bootfs/Image ::/Image
-mcopy -i boot.img bootfs/meson-g12a-radxa-zero.dtb ::/
-mcopy -i boot.img bootfs/extlinux/extlinux.conf ::/extlinux/extlinux.conf
-
-ROOTUSED=$(du -sm rootfs | cut -f1)
-ROOTSIZE=$(( (ROOTUSED + ROOTUSED/3 + 300) / 256 * 256 + 256 ))
-echo "rootfs used=${ROOTUSED}MB -> root partition ${ROOTSIZE}MB"
-mkfs.ext4 -q -U "$ROOTUUID" -L ARCHROOT -d rootfs -m 1 root.img "${ROOTSIZE}M"
-
-BOOT_START=32768
-BOOT_SIZE=1048576
-ROOT_START=$((BOOT_START + BOOT_SIZE))
-ROOT_SECTORS=$((ROOTSIZE * 2048))
-TOTAL_SECTORS=$((ROOT_START + ROOT_SECTORS))
-truncate -s $((TOTAL_SECTORS * 512)) final.img
-
-printf 'label: dos\nstart=%d, size=%d, type=c, bootable\nstart=%d, type=83\n' \
-  "$BOOT_START" "$BOOT_SIZE" "$ROOT_START" | sfdisk --no-reread --no-tell-kernel final.img
-
-dd if=uboot/u-boot.bin.sd.bin of=final.img bs=1 count=442 conv=notrunc status=none
-dd if=uboot/u-boot.bin.sd.bin of=final.img bs=512 skip=1 seek=1 conv=notrunc status=none
-dd if=boot.img of=final.img bs=512 seek=$BOOT_START conv=notrunc status=none
-dd if=root.img of=final.img bs=512 seek=$ROOT_START conv=notrunc status=none
-sync
-
-fdisk -l final.img || true
-
-IMGFILE=radxa-zero-archlinux-linux-${KREL}.img
-mv final.img "$IMGFILE"
-echo "Compressing (xz -6)..."
-xz -T0 -6 -k "$IMGFILE"
-
-### Ship #####################################################################
-mkdir -p /out
-cp "$IMGFILE.xz" /out/
-sha256sum /out/"$IMGFILE.xz" > /out/SHA256SUMS.txt
-{
-  echo "image: $IMGFILE.xz"
-  echo "kernel: vanilla mainline $KREL"
-  echo "kernel config: armbian/build linux-meson64-edge.config (7.3) + DEBUG_INFO off"
-  echo "u-boot: mainline $UBOOT_TAG (radxa-zero_defconfig) + LibreELEC amlogic-boot-fip g12a FIP"
-  echo "rootfs: Arch Linux ARM generic AArch64 latest"
-  echo "rootfs uuid: $ROOTUUID"
-  echo "root partition: ${ROOTSIZE}MB, boot: 512MB (offset 16MiB)"
-  echo "modules: $(ls rootfs/usr/lib/modules | tr '\n' ' ')"
-  echo "image size: $(du -sm "$IMGFILE" | cut -f1)MB, xz: $(du -sm "$IMGFILE.xz" | cut -f1)MB"
-  echo "built: $(date -u)"
-} | tee /out/BUILD-INFO.txt
-
-cp /work/build.log /out/build.log 2>/dev/null || true
-echo "=== BUILD COMPLETE: /out/$IMGFILE.xz ==="
+### Image assembly + ship ################################################
+# Not done here.  scripts/build/repack.sh is the authoritative assembly (lowercase
+# extlinux, official Radxa bootloader, fixed mkfs) and writes the image to /out.
+# build-all.sh calls repack.sh after this script.  Do NOT assemble the image here.
+echo "=== build.sh done: kernel + rootfs + firmware + U-Boot built ==="

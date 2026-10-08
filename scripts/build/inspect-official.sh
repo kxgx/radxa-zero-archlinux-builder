@@ -2,6 +2,12 @@
 # Inspect the official Radxa Debian image: extract its bootloader + boot flow.
 set -x
 cd /work
+# Cache: skip the ~2GB download + extraction when the bootloader is already
+# extracted (rebuild speed).  Set FORCE_OFFICIAL_DL=1 to force a re-download.
+if [ -f official-bootloader.img ] && [ "${FORCE_OFFICIAL_DL:-0}" != "1" ]; then
+  echo "official-bootloader.img already present — skipping official image download."
+  exit 0
+fi
 echo "=== [1] download official Radxa Debian b23 ==="
 wget -q https://github.com/radxa-build/radxa-zero/releases/download/b23/radxa-zero_debian_bullseye_kde_b23.img.xz -O official.img.xz
 echo "=== [2] decompress ==="
