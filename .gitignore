@@ -1,0 +1,26 @@
+# Build outputs (regenerable from the scripts)
+*.img
+*.img.xz
+*.bin
+*.log
+out/
+busybox*
+*.cpio.gz
+
+# Large re-fetchable reference sources / clones (downloaded at build time)
+armbian-build/
+rsm/
+firmware/
+firmware-repo/
+linux-src/
+linux-*.tar.gz
+rootfs/
+amlogic-boot-fip/
+uboot/
+official*
+ArchLinuxARM-*.tar.gz
+
+# Tooling / OS junk
+__pycache__/
+Thumbs.db
+.DS_Store

@@ -1,0 +1,6 @@
+# Normalize line endings; force LF for anything executed on Linux.
+* text=auto
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.md text eol=lf
+*.gitignore text eol=lf
