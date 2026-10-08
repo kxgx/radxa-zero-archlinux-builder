@@ -99,20 +99,29 @@ Images are named `radxa-zero-archlinux-<variant>-<kernel-version>.img.xz` — th
 
 ## Project layout
 
-| Script | Purpose |
-|---|---|
-| `build-all.sh` | **Entry point** — runs the full build in order |
-| `build.sh` | Base build: kernel, Arch rootfs, firmware, U-Boot/FIP |
-| `inspect-official.sh` | Extract the official Radxa bootloader (BootROM-compatible) |
-| `wifi-setup.sh` | Install packages + Raspberry Pi–style boot-partition config |
-| `port-pi.sh` | Port the real Pi `wpa_copy` / `sshswitch` / `userconf` scripts + units |
-| `wifi-firmware-fix.sh` | WiFi firmware for the three possible WiFi modules |
-| `usb-gadget-composite.sh` | USB NCM network + ACM serial composite gadget |
-| `usb-console-fix.sh` / `usb-serial.sh` | USB serial console helpers |
-| `led-boot-status.sh` | Boot-status LED (no-peripheral debugging) |
-| `pstore-ramoops.sh` / `capture-panic.sh` | Optional: capture kernel panic logs without a console |
-| `repack.sh` | Assemble the final SD card image |
-| `Dockerfile` | Cross-toolchain build container |
+Scripts are grouped by function under `scripts/`:
+
+```
+build-all.sh                 # entry point — runs the full build in order
+Dockerfile                   # cross-toolchain build container
+scripts/
+  build/                     # image build pipeline
+    build.sh                 #   kernel + Arch rootfs + firmware + U-Boot/FIP
+    inspect-official.sh      #   extract the official Radxa bootloader (BootROM-compatible)
+    repack.sh                #   assemble the final SD card image
+  config/                    # system + Raspberry Pi-style headless config
+    port-pi.sh               #   real Pi wpa_copy / sshswitch / userconf scripts + units
+    wifi-setup.sh            #   packages + boot-partition config (WiFi / SSH / user)
+    wifi-firmware-fix.sh     #   WiFi firmware for the three possible WiFi modules
+  usb/                       # USB gadget (network + serial console)
+    usb-gadget-composite.sh  #   NCM network + ACM serial composite gadget
+    usb-console-fix.sh       #   USB serial console helper
+    usb-serial.sh            #   USB serial console helper
+  debug/                     # diagnostics (optional; not part of the default build)
+    led-boot-status.sh       #   boot-status LED (no-peripheral debugging)
+    capture-panic.sh         #   capture kernel panic logs without a console
+    pstore-ramoops.sh        #   ramoops / pstore setup
+```
 
 ## Hardware support (mainline)
 
