@@ -110,8 +110,8 @@ scripts/
     inspect-official.sh      #   extract the official Radxa bootloader (BootROM-compatible)
     repack.sh                #   assemble the final SD card image
   config/                    # system + Raspberry Pi-style headless config
-    port-pi.sh               #   real Pi wpa_copy / sshswitch / userconf scripts + units
-    wifi-setup.sh            #   packages + boot-partition config (WiFi / SSH / user)
+    port-pi.sh               #   real Pi wpa_copy / sshswitch / userconf scripts + units (headless config)
+    wifi-setup.sh            #   rootfs base config: packages, keyring, netdev, sudoers, network, root expand
     wifi-firmware-fix.sh     #   WiFi firmware for the three possible WiFi modules
   usb/                       # USB gadget (network + serial console)
     usb-gadget-composite.sh  #   NCM network + ACM serial composite gadget
