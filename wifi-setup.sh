@@ -27,6 +27,11 @@ Server = http://mirror.archlinuxarm.org/aarch64/extra
 Server = http://mirror.archlinuxarm.org/aarch64/alarm
 EOF
 
+# Base tools + a fresh keyring (C3 missing tools, C4 stale keyring).  Best-effort:
+# these improve usability but must not abort the build if a package is missing.
+pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy \
+  archlinuxarm-keyring wireless-regdb inetutils less wget openbsd-netcat rsync cronie git python parted 2>/dev/null || true
+
 # Ladder: normal install -> db-only + extract -> plain extract
 if ! pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy wpa_supplicant sudo; then
   echo "WARN: normal install failed, trying db-only + manual extract"
@@ -128,12 +133,54 @@ Name=wlan*
 DHCP=yes
 EOF
 
-# netdev group (Pi-style confs use GROUP=netdev)
+# netdev group (Pi-style confs use GROUP=netdev).  Add to BOTH /etc/group and
+# /etc/gshadow so grpck stays clean -- a group in /etc/group but not /etc/gshadow
+# makes shadow.service/grpck fail (see build-issues-report.md C1).
 grep -q '^netdev:' /work/rootfs/etc/group || echo 'netdev:x:976:' >> /work/rootfs/etc/group
+grep -q '^netdev:' /work/rootfs/etc/gshadow || echo 'netdev:!::' >> /work/rootfs/etc/gshadow
 # wheel sudoers (userconf-created users get sudo)
 mkdir -p /work/rootfs/etc/sudoers.d
 echo '%wheel ALL=(ALL:ALL) ALL' > /work/rootfs/etc/sudoers.d/10-wheel
 chmod 440 /work/rootfs/etc/sudoers.d/10-wheel
+
+# Auto-expand the root partition on first boot (D1): the image rootfs is sized
+# small, so grow partition 2 to fill the SD card and resize ext4.  One-shot.
+mkdir -p /work/rootfs/usr/local/bin
+cat > /work/rootfs/usr/local/bin/expand-rootfs <<'EXPAND'
+#!/bin/bash
+# Grow root partition 2 to fill the disk, then resize ext4 (online).  One-shot.
+set -e
+DEV=/dev/mmcblk0
+PART=2
+if [ -b "$DEV" ] && command -v parted >/dev/null && command -v resize2fs >/dev/null; then
+  END=$(parted -s "$DEV" unit s print 2>/dev/null | awk -v p=" $PART " '$0 ~ "^ *"p {print $3}' | tr -d 's')
+  DISK=$(parted -s "$DEV" unit s print 2>/dev/null | awk '/Disk .*:/{print $3}' | tr -d 's')
+  if [ -n "$END" ] && [ -n "$DISK" ] && [ "$END" -lt "$((DISK-34))" ]; then
+    parted -s "$DEV" resizepart "$PART" 100%
+    e2fsck -fy "${DEV}p${PART}" || true
+    resize2fs "${DEV}p${PART}"
+  fi
+fi
+EXPAND
+chmod +x /work/rootfs/usr/local/bin/expand-rootfs
+
+cat > /work/rootfs/etc/systemd/system/expand-rootfs.service <<'EXPANDSVC'
+[Unit]
+Description=Expand root filesystem to fill the SD card (first boot)
+After=local-fs.target
+ConditionPathExists=!/var/lib/expand-rootfs-done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/expand-rootfs
+ExecStartPost=/bin/touch /var/lib/expand-rootfs-done
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EXPANDSVC
+mkdir -p /work/rootfs/etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/expand-rootfs.service /work/rootfs/etc/systemd/system/multi-user.target.wants/expand-rootfs.service
 
 # sshd OFF by default (Pi semantics: drop an empty `ssh` file on BOOT to enable)
 rm -f /work/rootfs/etc/systemd/system/multi-user.target.wants/sshd.service

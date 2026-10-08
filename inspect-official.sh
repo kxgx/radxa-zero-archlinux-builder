@@ -10,9 +10,14 @@ ls -la official.img
 echo "=== [3] partition table ==="
 fdisk -l official.img
 echo "=== [4] first 4MB (bootloader area) ==="
-dd if=official.img of=official-bl.bin bs=1M count=4 status=none
-ls -la official-bl.bin
-echo "first 16 bytes:"; xxd official-bl.bin | head -2
+# This is the official Radxa bootloader (BL2 head @0-441 + FIP @512+).  repack.sh
+# writes it with the Amlogic convention (442 bytes @0 + rest @512) and expects the
+# name official-bootloader.img.  The mainline U-Boot we build is REJECTED by the
+# S905Y2 BootROM, so this official blob is what makes the image bootable.
+dd if=official.img of=official-bootloader.img bs=1M count=4 status=none
+cp official-bootloader.img official-bl.bin
+ls -la official-bootloader.img official-bl.bin
+echo "first 16 bytes (BL2 magic should be 60 5c 8e 39):"; xxd official-bootloader.img | head -2
 echo "=== [5] inspect each partition (find boot FAT) ==="
 for P in 1 2 3; do
   S=$(fdisk -l official.img 2>/dev/null | awk -v p="official.img$P " '$0 ~ p {print $2}')

@@ -266,6 +266,7 @@ Name=wlan*
 DHCP=yes
 EOF
 grep -q '^netdev:' "$R/etc/group" || echo 'netdev:x:976:' >> "$R/etc/group"
+grep -q '^netdev:' "$R/etc/gshadow" || echo 'netdev:!::' >> "$R/etc/gshadow"
 echo '%wheel ALL=(ALL:ALL) ALL' > "$R/etc/sudoers.d/10-wheel"
 chmod 440 "$R/etc/sudoers.d/10-wheel"
 

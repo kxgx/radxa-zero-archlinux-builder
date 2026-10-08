@@ -13,7 +13,9 @@ echo "KREL=$KREL VARIANT=$VARIANT ROOTUUID=$ROOTUUID"
 rm -rf bootfs; mkdir -p bootfs/extlinux
 cp linux-src/arch/arm64/boot/Image bootfs/Image
 cp linux-src/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dtb bootfs/
-[ -f /work/initramfs.cpio.gz ] && cp /work/initramfs.cpio.gz bootfs/initramfs.cpio.gz
+# No initramfs: the kernel mounts the root directly by UUID (EXT4 + MMC are
+# built-in).  A leftover initramfs with hardcoded /dev/mmcblk* paths caused
+# "Can't lookup blockdev" noise on every boot (see build-issues-report.md B1).
 cat > bootfs/extlinux/extlinux.conf <<EOF
 default l0
 prompt 0
@@ -22,7 +24,6 @@ timeout 10
 label l0
 	linux /Image
 	fdt /meson-g12a-radxa-zero.dtb
-	initrd /initramfs.cpio.gz
 	append root=UUID=$ROOTUUID rootwait rw panic=5 earlycon consoleblank=0 console=tty0 console=ttyAML0,115200n8 coherent_pool=2M irqchip.gicv3_pseudo_nmi=0 cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory swapaccount=1
 EOF
 cat > bootfs/wpa_supplicant.conf <<'EOF'
@@ -49,7 +50,6 @@ mkfs.vfat -F 32 -n BOOT -C boot.img 524288
 mmd -i boot.img ::/extlinux
 mcopy -i boot.img bootfs/Image ::/Image
 mcopy -i boot.img bootfs/meson-g12a-radxa-zero.dtb ::/
-[ -f bootfs/initramfs.cpio.gz ] && mcopy -i boot.img bootfs/initramfs.cpio.gz ::/initramfs.cpio.gz
 mcopy -i boot.img bootfs/extlinux/extlinux.conf ::/extlinux/extlinux.conf
 mcopy -i boot.img bootfs/wpa_supplicant.conf ::/wpa_supplicant.conf
 mcopy -i boot.img bootfs/userconf.txt ::/userconf.txt
@@ -72,7 +72,15 @@ printf 'label: dos\nstart=%d, size=%d, type=c, bootable\nstart=%d, type=83\n' \
 # Bootloader: OFFICIAL Radxa bootloader (Radxa-signed, BootROM accepts it).
 # Written with the Amlogic convention (BL2 head @0 + FIP @512), preserving our MBR.
 BL=/work/official-bootloader.img
-[ -f "$BL" ] || BL=uboot/u-boot.bin.sd.bin
+# The official Radxa bootloader is REQUIRED.  The mainline U-Boot (uboot/) is
+# REJECTED by the S905Y2 BootROM -- the board drops into USB burn mode (GX-CHIP).
+# Fail loudly rather than silently producing an unbootable image.
+if [ ! -f "$BL" ]; then
+  echo "FATAL: $BL missing -- cannot build a bootable image."
+  echo "  Run inspect-official.sh first (extracts the official Radxa bootloader)."
+  echo "  Refusing to fall back to the mainline U-Boot (BootROM rejects it -> burn mode)."
+  exit 1
+fi
 dd if="$BL" of=final.img bs=1 count=442 conv=notrunc status=none
 dd if="$BL" of=final.img bs=512 skip=1 seek=1 conv=notrunc status=none
 dd if=boot.img of=final.img bs=512 seek=$BOOT_START conv=notrunc status=none
