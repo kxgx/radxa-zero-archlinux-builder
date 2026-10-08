@@ -173,6 +173,7 @@ LABEL radxa-zero-arch
   APPEND root=UUID=$ROOTUUID rootwait rw console=ttyAML0,115200 no_console_suspend
 EOF
 
+rm -f boot.img root.img final.img
 mkfs.vfat -F 32 -n BOOT -C boot.img 524288
 mmd -i boot.img ::/extlinux
 mcopy -i boot.img bootfs/Image ::/Image
@@ -205,7 +206,7 @@ fdisk -l final.img || true
 IMGFILE=radxa-zero-archlinux-linux-${KREL}.img
 mv final.img "$IMGFILE"
 echo "Compressing (xz -6)..."
-xz -T0 -6 -k "$IMGFILE"
+xz -T0 -6 -kf "$IMGFILE"
 
 ### Ship #####################################################################
 mkdir -p /out
