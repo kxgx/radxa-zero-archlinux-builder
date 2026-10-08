@@ -86,7 +86,9 @@ docker run --rm \
   rz-builder bash /host/build-all.sh
 ```
 
-The finished image is written to `/work/radxa-zero-archlinux-*.img.xz` (mounted from `rz-build`).
+The finished image is written to `/work/radxa-zero-archlinux-<kernel-version>.img.xz` (mounted from `rz-build`). The kernel version in the filename is **auto-detected** from the build (`make kernelrelease`), e.g. `radxa-zero-archlinux-7.3.0-rc6.img.xz` — so when you bump the kernel version, the image name updates automatically and each build is easy to tell apart.
+
+The GitHub Actions workflow also picks up the kernel version and uses it in the artifact and release names (e.g. *Radxa Zero Arch Linux (kernel 7.3.0-rc6)*).
 
 ## Project layout
 

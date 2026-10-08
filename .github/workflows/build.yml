@@ -98,6 +98,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    outputs:
+      kver: ${{ steps.kver.outputs.kver }}
     permissions:
       contents: read
     steps:
@@ -109,6 +111,13 @@ jobs:
       - name: 完整镜像构建（build-all.sh）
         run: docker run --rm -v rz-build:/work -v "$PWD":/host:ro rz-builder bash /host/build-all.sh
 
+      - name: 自动检测内核版本
+        id: kver
+        run: |
+          KVER=$(docker run --rm -v rz-build:/work rz-builder make -s -C /work/linux-src kernelrelease)
+          echo "kver=$KVER" >> "$GITHUB_OUTPUT"
+          echo "检测到内核版本: $KVER"
+
       - name: 收集镜像产物
         run: |
           docker run --rm -v rz-build:/work -v "$PWD":/host rz-builder bash -c 'cp /work/radxa-zero-archlinux-*.img.xz /work/SHA256SUMS.txt /host/ 2>/dev/null || true'
@@ -118,7 +127,7 @@ jobs:
       - name: 上传镜像构件
         uses: actions/upload-artifact@v6
         with:
-          name: radxa-zero-archlinux-image
+          name: radxa-zero-archlinux-image-${{ steps.kver.outputs.kver }}
           path: |
             radxa-zero-archlinux-*.img.xz
             sums.txt
@@ -143,16 +152,17 @@ jobs:
 
       - uses: actions/download-artifact@v7
         with:
-          name: radxa-zero-archlinux-image
+          name: radxa-zero-archlinux-image-${{ needs.build-image.outputs.kver }}
 
       - name: 生成变更摘要
         run: |
           CHANGES=$(git log --abbrev=8 --abbrev-commit --pretty=format:" - %s(%h) by %an" -15)
-          { echo "## 最近变更:"; echo "$CHANGES"; } > changelog.txt
+          { echo "## 内核版本: ${{ needs.build-image.outputs.kver }}"; echo; echo "## 最近变更:"; echo "$CHANGES"; } > changelog.txt
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          name: Radxa Zero Arch Linux (kernel ${{ needs.build-image.outputs.kver }})
           files: |
             radxa-zero-archlinux-*.img.xz
             sums.txt

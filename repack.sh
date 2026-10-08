@@ -79,7 +79,7 @@ dd if=root.img of=final.img bs=512 seek=$ROOT_START conv=notrunc status=none
 sync
 
 fdisk -l final.img || true
-IMGFILE=radxa-zero-archlinux-linux-${KREL}-pi.img
+IMGFILE=radxa-zero-archlinux-${KREL}.img
 mv final.img "$IMGFILE"
 echo "Compressing (xz -6)..."
 xz -T0 -6 -kf "$IMGFILE"
