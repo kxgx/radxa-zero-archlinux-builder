@@ -1,0 +1,189 @@
+name: 构建与发布
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+    # 纯文档变更不触发构建
+    paths-ignore:
+      - '*.md'
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - '*.md'
+      - '**/*.md'
+  workflow_dispatch:
+
+# 同一分支/PR 的新提交取消旧运行（deskflow / remilia_pet_qt 同款）
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 最小权限原则：默认只读，发布 job 单独开 write
+permissions:
+  contents: read
+
+jobs:
+
+  # ============================================================
+  # 一、静态检查（快，每次 push/PR 都跑）
+  # ============================================================
+  checks:
+    name: 静态检查
+    runs-on: ubuntu-24.04
+    outputs:
+      code: ${{ steps.codechange.outputs.code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: 0. 检测代码变更（仅文档变更时跳过镜像构建）
+        id: codechange
+        run: |
+          BASE=main
+          if [ "${{ github.event_name }}" = "pull_request" ]; then BASE="${{ github.base_ref }}"; fi
+          git fetch --no-tags origin "$BASE" 2>/dev/null || true
+          if ! git rev-parse --verify "origin/$BASE" >/dev/null 2>&1; then
+            # 无法确定基线时按代码变更处理（宁可编译，不可漏编译）
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "origin/$BASE...HEAD" -- . ':(exclude)*.md' ':(exclude)**/*.md' ':(exclude).github/**' > /tmp/changed.txt 2>/dev/null; then
+            if [ -s /tmp/changed.txt ]; then echo "code=true" >> "$GITHUB_OUTPUT"; else echo "code=false" >> "$GITHUB_OUTPUT"; fi
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 1. Shell 语法检查 (bash -n)
+        run: |
+          FAIL=0
+          for f in *.sh; do
+            bash -n "$f" || { echo "SYNTAX ERROR: $f"; FAIL=1; }
+          done
+          [ "$FAIL" = 0 ] && echo "OK: all scripts parse"
+          exit $FAIL
+
+      - name: 2. ShellCheck 静态分析（错误级）
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck --severity=error *.sh && echo "OK: shellcheck clean"
+
+      - name: 3. 脚本规范检查（shebang + LF 换行）
+        run: |
+          FAIL=0
+          for f in *.sh; do
+            head -1 "$f" | grep -q '^#!' || { echo "FAIL: $f missing shebang"; FAIL=1; }
+            if file "$f" | grep -q CRLF; then echo "FAIL: $f has CRLF line endings (breaks on Linux)"; FAIL=1; fi
+          done
+          [ "$FAIL" = 0 ] && echo "OK: shebangs + LF present"
+          exit $FAIL
+
+      - name: 4. 机密扫描（禁止硬编码密码/私钥）
+        run: |
+          if grep -rnEi 'psk\s*=\s*["'"'"'][^"'"'"']{6,}|password\s*=\s*["'"'"'][^"'"'"']+|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY' --include='*.sh' --include='Dockerfile' . | grep -v '你的WiFi密码\|你的密码\|my-password\|your-wifi'; then
+            echo "FAIL: potential hard-coded secret found"; exit 1
+          fi
+          echo "OK: no secrets"
+
+      - name: 5. 构建工具链容器（校验 Dockerfile）
+        run: docker build -t rz-builder .
+
+  # ============================================================
+  # 二、构建 SD 镜像（重：完整构建，仅 tag / 手动触发）
+  # ============================================================
+  build-image:
+    name: 构建 SD 镜像
+    needs: [checks]
+    # 完整镜像构建较慢（下载内核/rootfs/官方 bootloader + 交叉编译），
+    # 仅在 tag、手动触发时执行；日常 push/PR 只跑静态检查。
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 构建工具链容器
+        run: docker build -t rz-builder .
+
+      - name: 完整镜像构建（build-all.sh）
+        run: docker run --rm -v rz-build:/work -v "$PWD":/host:ro rz-builder bash /host/build-all.sh
+
+      - name: 收集镜像产物
+        run: |
+          docker run --rm -v rz-build:/work -v "$PWD":/host rz-builder bash -c 'cp /work/radxa-zero-archlinux-*.img.xz /work/SHA256SUMS.txt /host/ 2>/dev/null || true'
+          ls -la radxa-zero-archlinux-*.img.xz
+          sha256sum radxa-zero-archlinux-*.img.xz | tee sums.txt
+
+      - name: 上传镜像构件
+        uses: actions/upload-artifact@v6
+        with:
+          name: radxa-zero-archlinux-image
+          path: |
+            radxa-zero-archlinux-*.img.xz
+            sums.txt
+          retention-days: 14
+
+  # ============================================================
+  # 三、发布（仅官方仓库的 tag 触发）
+  # ============================================================
+  release:
+    name: 发布
+    needs: [checks, build-image]
+    # 发布门禁：仅官方仓库的 tag 触发（防误发布）
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'kxgx/radxa-zero-archlinux-builder'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: radxa-zero-archlinux-image
+
+      - name: 生成变更摘要
+        run: |
+          CHANGES=$(git log --abbrev=8 --abbrev-commit --pretty=format:" - %s(%h) by %an" -15)
+          { echo "## 最近变更:"; echo "$CHANGES"; } > changelog.txt
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            radxa-zero-archlinux-*.img.xz
+            sums.txt
+            changelog.txt
+          draft: false
+          prerelease: false
+          make_latest: true
+
+  # ============================================================
+  # 四、质量门：静态检查 +（如执行）镜像构建都通过才算通过
+  # ============================================================
+  ci-passed:
+    name: 质量门
+    needs: [checks, build-image]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 校验结果并生成摘要
+        run: |
+          FAIL=0
+          for r in ${{ needs.checks.result }} ${{ needs.build-image.result }}; do
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then FAIL=1; fi
+          done
+          disp() { case "$1" in success) echo "✅ 通过";; skipped) echo "跳过";; failure) echo "❌ 失败";; *) echo "$1";; esac; }
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ## 构建摘要
+
+          | 项目 | 结果 |
+          |------|------|
+          | 静态检查（lint/语法/机密） | $(disp "${{ needs.checks.result }}") |
+          | SD 镜像构建 | $(disp "${{ needs.build-image.result }}") |
+          EOF
+          if [ "$FAIL" = "1" ]; then echo "❌ 存在失败任务" >> "$GITHUB_STEP_SUMMARY"; exit 1; fi
+          echo "✅ 通过" >> "$GITHUB_STEP_SUMMARY"
