@@ -40,18 +40,14 @@ wget -q -O .config https://raw.githubusercontent.com/armbian/build/main/config/k
 scripts/config --disable DEBUG_INFO --disable DEBUG_INFO_DWARF5 --disable DEBUG_INFO_BTF --enable DEBUG_INFO_NONE
 scripts/config --set-str LOCALVERSION ""
 scripts/config --set-str SYSTEM_TRUSTED_KEYS ""
-# Landlock: pacman uses it to sandbox package installs.  Without it pacman's
-# sandbox degrades to DisableSandbox (see build-issues-report.md A1).  Enable it
-# and add it to the active LSM list.
-scripts/config --enable SECURITY_LANDLOCK
-scripts/config --set-str LSM "capability,yama,apparmor,landlock"
-# KASLR needs an entropy seed at boot; trust the bootloader/CPU RNG so KASLR
-# stays enabled (otherwise "KASLR disabled due to lack of seed", A3).
-scripts/config --enable RANDOM_TRUST_BOOTLOADER
-scripts/config --enable RANDOM_TRUST_CPU
-# ramoops/pstore built-in so a kernel panic is captured to reserved RAM (the
-# initramfs copies it to the BOOT partition on the next boot).
-scripts/config --enable PSTORE --enable PSTORE_RAM --enable PSTORE_CONSOLE --enable PSTORE_PMSG
+# KERNEL CONFIG ADDITIONS (Landlock / KASLR / pstore) temporarily disabled while
+# bisecting a ~2s boot failure: the last known-good image used the armbian config
+# unchanged.  Re-enable one at a time once the board boots again.
+# scripts/config --enable SECURITY_LANDLOCK
+# scripts/config --set-str LSM "capability,yama,apparmor,landlock"
+# scripts/config --enable RANDOM_TRUST_BOOTLOADER
+# scripts/config --enable RANDOM_TRUST_CPU
+# scripts/config --enable PSTORE --enable PSTORE_RAM --enable PSTORE_CONSOLE --enable PSTORE_PMSG
 make olddefconfig
 
 echo "--- key options ---"

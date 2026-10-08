@@ -10,6 +10,7 @@ set -euo pipefail
 exec > >(tee -a /work/initramfs.log) 2>&1
 echo "=== initramfs $(date -u) ==="
 cd /work
+command -v cpio >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq cpio; }
 
 # --- static ARM64 busybox (prebuilt; cross-compiling busybox is fiddly) ---
 if [ ! -x /work/busybox-static ]; then
