@@ -49,6 +49,9 @@ scripts/config --set-str LSM "capability,yama,apparmor,landlock"
 # stays enabled (otherwise "KASLR disabled due to lack of seed", A3).
 scripts/config --enable RANDOM_TRUST_BOOTLOADER
 scripts/config --enable RANDOM_TRUST_CPU
+# ramoops/pstore built-in so a kernel panic is captured to reserved RAM (the
+# initramfs copies it to the BOOT partition on the next boot).
+scripts/config --enable PSTORE --enable PSTORE_RAM --enable PSTORE_CONSOLE --enable PSTORE_PMSG
 make olddefconfig
 
 echo "--- key options ---"

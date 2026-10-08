@@ -42,7 +42,7 @@ mount -t devtmpfs none /dev
 BOOTDEV=$(blkid -L BOOT 2>/dev/null)
 ROOTDEV=$(blkid -L ARCHROOT 2>/dev/null)
 mkdir -p /mnt
-if [ -n "$BOOTDEV" ] && mount -o ro "$BOOTDEV" /mnt 2>/dev/null; then
+if [ -n "$BOOTDEV" ] && mount -o rw "$BOOTDEV" /mnt 2>/dev/null; then
   mkdir -p /mnt/pstore
   for f in /sys/fs/pstore/*; do [ -e "$f" ] && cp "$f" /mnt/pstore/ 2>/dev/null; done
   echo "initramfs-ran" > /mnt/initramfs-marker.txt 2>/dev/null
@@ -54,9 +54,7 @@ mkdir -p /newroot
 if [ -n "$ROOTDEV" ] && mount "$ROOTDEV" /newroot 2>/dev/null; then
   exec switch_root /newroot /sbin/init
 fi
-mount /dev/mmcblk1p2 /newroot 2>/dev/null && exec switch_root /newroot /sbin/init
-mount /dev/mmcblk0p2 /newroot 2>/dev/null && exec switch_root /newroot /sbin/init
-echo "initramfs: cannot mount root" > /dev/kmsg 2>/dev/null
+echo "initramfs: cannot mount root (ARCHROOT label not found)" > /dev/kmsg 2>/dev/null
 reboot
 INIT
 chmod +x "$IR"/init

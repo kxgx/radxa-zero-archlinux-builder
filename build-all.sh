@@ -36,8 +36,9 @@ bash /host/scripts/config/wifi-firmware-fix.sh
 echo "=== [6/7] USB gadget: NCM network + ACM serial console ==="
 bash /host/scripts/usb/usb-gadget-composite.sh
 
-echo "=== [7/7] Boot-status LED + assemble SD image ==="
+echo "=== [7/7] Boot-status LED + initramfs + assemble SD image ==="
 bash /host/scripts/debug/led-boot-status.sh
+bash /host/scripts/build/initramfs.sh
 bash /host/scripts/build/repack.sh
 
 echo "=== build-all done: image in /work/radxa-zero-archlinux-*.img.xz ==="
