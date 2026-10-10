@@ -60,8 +60,11 @@ Name=wlan*
 DHCP=yes
 EOF
 
-# netdev group (Pi-style confs use GROUP=netdev)
+# netdev group (Pi-style confs use GROUP=netdev).  Add to BOTH /etc/group and
+# /etc/gshadow so grpck stays clean (a group in group but not gshadow makes
+# shadow.service/grpck fail on every boot).
 grep -q '^netdev:' /work/rootfs/etc/group || echo 'netdev:x:976:' >> /work/rootfs/etc/group
+grep -q '^netdev:' /work/rootfs/etc/gshadow || echo 'netdev:!::' >> /work/rootfs/etc/gshadow
 # wheel sudoers (userconf-created users get sudo)
 mkdir -p /work/rootfs/etc/sudoers.d
 echo '%wheel ALL=(ALL:ALL) ALL' > /work/rootfs/etc/sudoers.d/10-wheel
