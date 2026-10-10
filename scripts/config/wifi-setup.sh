@@ -87,13 +87,24 @@ chmod 440 /work/rootfs/etc/sudoers.d/10-wheel
 # being used. Are you sure?" and the old service exited 1).
 cat > /work/rootfs/usr/local/bin/expand-rootfs <<'EOF'
 #!/bin/sh
-set -e
-ROOTDEV=$(findmnt -n -o SOURCE /)
-DISK=$(lsblk -no PKNAME "$ROOTDEV")
-PARTNUM=$(cat "/sys/class/block/$(basename "$ROOTDEV")/partition")
-parted -s "/dev/$DISK" resizepart "$PARTNUM" 100%
-resize2fs "$ROOTDEV"
-touch /var/lib/expand-rootfs-done
+# Expand the root partition + filesystem to fill the SD card (D1).
+# Runs once on first boot.  Uses sfdisk (non-interactive, can edit a mounted
+# partition table) + resize2fs (online).  Always exits 0 so a failure cannot put
+# the system into 'degraded' (parted prompted 'Partition is being used' and the
+# old oneshot service failed -> degraded).
+LOG=/var/log/expand-rootfs.log
+{
+  ROOTDEV=$(findmnt -n -o SOURCE /)
+  DISK=$(lsblk -no PKNAME "$ROOTDEV")
+  PARTNUM=$(cat "/sys/class/block/$(basename "$ROOTDEV")/partition" 2>/dev/null)
+  echo "root=$ROOTDEV disk=$DISK part=$PARTNUM"
+  echo ", +" | sfdisk --no-reread -N "$PARTNUM" "/dev/$DISK" && echo "partition table updated"
+  partx --update --nr "$PARTNUM" "/dev/$DISK" 2>/dev/null && echo "kernel notified of new size"
+  resize2fs "$ROOTDEV" && echo "filesystem grown"
+  df -h /
+} >> "$LOG" 2>&1
+touch /var/lib/expand-rootfs-done 2>/dev/null
+exit 0
 EOF
 chmod +x /work/rootfs/usr/local/bin/expand-rootfs
 
