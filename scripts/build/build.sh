@@ -173,54 +173,11 @@ ls -la u-boot.bin.sd.bin
 cd /work
 
 ### 8. Image assembly ########################################################
-echo "=== [8/8] Image assembly ==="
-mkdir -p bootfs/extlinux
-cp linux-src/arch/arm64/boot/Image bootfs/Image
-cp linux-src/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dtb bootfs/
-cat > bootfs/extlinux/extlinux.conf <<EOF
-DEFAULT radxa-zero-arch
-TIMEOUT 20
-
-LABEL radxa-zero-arch
-  KERNEL /Image
-  FDT /meson-g12a-radxa-zero.dtb
-  APPEND root=UUID=$ROOTUUID rootwait rw console=ttyAML0,115200 no_console_suspend
-EOF
-
-rm -f boot.img root.img final.img
-mkfs.vfat -F 32 -n BOOT -C boot.img 524288
-mmd -i boot.img ::/extlinux
-mcopy -i boot.img bootfs/Image ::/Image
-mcopy -i boot.img bootfs/meson-g12a-radxa-zero.dtb ::/
-mcopy -i boot.img bootfs/extlinux/extlinux.conf ::/extlinux/extlinux.conf
-
-ROOTUSED=$(du -sm rootfs | cut -f1)
-ROOTSIZE=$(( (ROOTUSED + ROOTUSED/3 + 300) / 256 * 256 + 256 ))
-echo "rootfs used=${ROOTUSED}MB -> root partition ${ROOTSIZE}MB"
-mkfs.ext4 -q -U "$ROOTUUID" -L ARCHROOT -d rootfs -m 1 root.img "${ROOTSIZE}M"
-
-BOOT_START=32768
-BOOT_SIZE=1048576
-ROOT_START=$((BOOT_START + BOOT_SIZE))
-ROOT_SECTORS=$((ROOTSIZE * 2048))
-TOTAL_SECTORS=$((ROOT_START + ROOT_SECTORS))
-truncate -s $((TOTAL_SECTORS * 512)) final.img
-
-printf 'label: dos\nstart=%d, size=%d, type=c, bootable\nstart=%d, type=83\n' \
-  "$BOOT_START" "$BOOT_SIZE" "$ROOT_START" | sfdisk --no-reread --no-tell-kernel final.img
-
-dd if=uboot/u-boot.bin.sd.bin of=final.img bs=1 count=442 conv=notrunc status=none
-dd if=uboot/u-boot.bin.sd.bin of=final.img bs=512 skip=1 seek=1 conv=notrunc status=none
-dd if=boot.img of=final.img bs=512 seek=$BOOT_START conv=notrunc status=none
-dd if=root.img of=final.img bs=512 seek=$ROOT_START conv=notrunc status=none
-sync
-
-fdisk -l final.img || true
-
-IMGFILE=radxa-zero-archlinux-linux-${KREL}.img
-mv final.img "$IMGFILE"
-echo "Compressing (xz -6)..."
-xz -T0 -6 -kf "$IMGFILE"
+# NOTE: the SD image is assembled by scripts/build/repack.sh (the authoritative
+# assembly with the official bootloader).  build.sh only prepares the kernel,
+# rootfs, and U-Boot/FIP -- it must NOT write a second image here (that produced
+# the duplicate 'radxa-zero-archlinux-linux-*.img' next to repack.sh's output).
+echo "=== [8/8] Image assembly (handled by repack.sh) ==="
 
 ### Ship #####################################################################
 mkdir -p /out
