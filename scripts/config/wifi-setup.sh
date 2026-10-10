@@ -27,6 +27,12 @@ Server = http://mirror.archlinuxarm.org/aarch64/extra
 Server = http://mirror.archlinuxarm.org/aarch64/alarm
 EOF
 
+# Base tools + a fresh keyring (C3/C4).  Best-effort: these improve usability but
+# a missing package must not abort the build.
+pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy \
+  archlinuxarm-keyring wireless-regdb inetutils less wget openbsd-netcat rsync \
+  cronie git python parted wpa_supplicant sudo 2>/dev/null || true
+
 # Ladder: normal install -> db-only + extract -> plain extract
 if ! pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy wpa_supplicant sudo; then
   echo "WARN: normal install failed, trying db-only + manual extract"
