@@ -13,13 +13,19 @@ echo "=== Build start: $(date -u) | jobs=$NPROC ==="
 
 cd /work
 
-### 1. Kernel source (7.3-rc6) ##############################################
-echo "=== [1/8] Download kernel 7.3-rc6 ==="
-if [ ! -d linux-src ]; then
+### 1. Kernel source (KERNEL_VERSION: 7.2.9 stable or 7.3-rc6) ###############
+KVER="${KERNEL_VERSION:-7.3-rc6}"
+echo "=== [1/8] Download kernel $KVER ==="
+# re-download if the cached tree is a different version (e.g. stable vs latest)
+if [ ! -d linux-src ] || [ "$(cat linux-src/.kver 2>/dev/null)" != "$KVER" ]; then
+  rm -rf linux-src
   mkdir -p linux-src
-  ( wget -q https://cdn.kernel.org/pub/linux/kernel/v7.x/testing/linux-7.3-rc6.tar.xz \
-    || wget -q https://git.kernel.org/torvalds/t/linux-7.3-rc6.tar.gz ) || { echo "FATAL: kernel download failed"; exit 1; }
-  tar xf linux-7.3-rc6.tar.* -C linux-src --strip-components=1
+  # stable releases live in v7.x/, release candidates in v7.x/testing/
+  ( wget -q "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-${KVER}.tar.xz" \
+    || wget -q "https://cdn.kernel.org/pub/linux/kernel/v7.x/testing/linux-${KVER}.tar.xz" \
+    || wget -q "https://git.kernel.org/torvalds/t/linux-${KVER}.tar.gz" ) || { echo "FATAL: kernel $KVER download failed"; exit 1; }
+  tar xf "linux-${KVER}.tar."* -C linux-src --strip-components=1
+  echo "$KVER" > linux-src/.kver
 fi
 cd linux-src
 
