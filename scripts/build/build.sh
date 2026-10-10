@@ -19,11 +19,12 @@ echo "=== [1/8] Download kernel $KVER ==="
 # re-download if the cached tree is a different version (e.g. stable vs latest)
 if [ ! -d linux-src ] || [ "$(cat linux-src/.kver 2>/dev/null)" != "$KVER" ]; then
   rm -rf linux-src
+  rm -f linux-*.tar.xz linux-*.tar.gz linux-*.tar.xz.* linux-*.tar.gz.*
   mkdir -p linux-src
   # stable releases live in v7.x/, release candidates in v7.x/testing/
-  ( wget -q "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-${KVER}.tar.xz" \
-    || wget -q "https://cdn.kernel.org/pub/linux/kernel/v7.x/testing/linux-${KVER}.tar.xz" \
-    || wget -q "https://git.kernel.org/torvalds/t/linux-${KVER}.tar.gz" ) || { echo "FATAL: kernel $KVER download failed"; exit 1; }
+  ( wget -q -O "linux-${KVER}.tar.xz" "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-${KVER}.tar.xz" \
+    || wget -q -O "linux-${KVER}.tar.xz" "https://cdn.kernel.org/pub/linux/kernel/v7.x/testing/linux-${KVER}.tar.xz" \
+    || wget -q -O "linux-${KVER}.tar.gz" "https://git.kernel.org/torvalds/t/linux-${KVER}.tar.gz" ) || { echo "FATAL: kernel $KVER download failed"; exit 1; }
   tar xf "linux-${KVER}.tar."* -C linux-src --strip-components=1
   echo "$KVER" > linux-src/.kver
 fi
