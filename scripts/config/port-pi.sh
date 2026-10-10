@@ -257,28 +257,9 @@ done
 grep -q '/boot/firmware' "$R/etc/fstab" 2>/dev/null || \
   echo '/dev/disk/by-label/BOOT  /boot/firmware  vfat  defaults,umask=0022  0  0' >> "$R/etc/fstab"
 
-# wifi: DHCP on wlan*, sudo for wheel (kept from earlier build)
-[ -f "$R/etc/systemd/network/25-wireless.network" ] || cat > "$R/etc/systemd/network/25-wireless.network" <<'EOF'
-[Match]
-Name=wlan*
-
-[Network]
-DHCP=yes
-EOF
-grep -q '^netdev:' "$R/etc/group" || echo 'netdev:x:976:' >> "$R/etc/group"
-echo '%wheel ALL=(ALL:ALL) ALL' > "$R/etc/sudoers.d/10-wheel"
-chmod 440 "$R/etc/sudoers.d/10-wheel"
-
-### 9. retire my earlier hand-rolled services (superseded by the real Pi scripts) ###
-rm -f "$R/etc/systemd/system/multi-user.target.wants/pi-bootcfg.service" \
-      "$R/etc/systemd/system/pi-bootcfg.service" \
-      "$R/usr/local/bin/pi-bootcfg.sh" \
-      "$R/usr/lib/raspberrypi-sys-mods/wifi-config" \
-      "$R/usr/lib/systemd/system/raspberrypi-sys-mods-wifi-config.service" \
-      "$R/etc/systemd/system/multi-user.target.wants/raspberrypi-sys-mods-wifi-config.service"
-
-# sshd OFF by default (Pi semantics)
-rm -f "$R/etc/systemd/system/multi-user.target.wants/sshd.service"
+# NOTE: network (25-wireless.network), netdev group, sudoers, and sshd-off are
+# configured by scripts/config/wifi-setup.sh (rootfs base config).  This script
+# only installs the Raspberry Pi headless mechanism.
 
 echo "--- installed files ---"
 ls -la "$R/usr/lib/raspberrypi-sys-mods" "$R/usr/lib/userconf-pi"
