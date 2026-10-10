@@ -48,17 +48,16 @@ if [ -n "$BOOTDEV" ] && mount -o rw "$BOOTDEV" /mnt 2>/dev/null; then
   umount /mnt 2>/dev/null
 fi
 
-# find + mount the root from the kernel cmdline (root=UUID=... / root=/dev/...)
-ROOT=$(sed -n 's/.*[ 	]root=\([^ 	]*\).*/\1/p' /proc/cmdline | head -1)
-DEV=""
-case "$ROOT" in
-  UUID=*)  DEV=$(blkid -U "${ROOT#UUID=}" 2>/dev/null) ;;
-  LABEL=*) DEV=$(blkid -L "${ROOT#LABEL=}" 2>/dev/null) ;;
-  PARTUUID=*) DEV=$(blkid -t "$ROOT" -o device 2>/dev/null | head -1) ;;
-  *) DEV="$ROOT" ;;
-esac
-# fallback: by the ARCHROOT label
-[ -b "$DEV" ] || DEV=$(blkid -L ARCHROOT 2>/dev/null)
+# find + mount the root: prefer the ARCHROOT label (known-good), then root= from cmdline
+DEV=$(blkid -L ARCHROOT 2>/dev/null)
+if [ -z "$DEV" ]; then
+  ROOT=$(sed -n 's/.*root=\([^ 	]*\).*/\1/p' /proc/cmdline | head -1)
+  case "$ROOT" in
+    UUID=*)  DEV=$(blkid -U "${ROOT#UUID=}" 2>/dev/null) ;;
+    LABEL=*) DEV=$(blkid -L "${ROOT#LABEL=}" 2>/dev/null) ;;
+    *) DEV="$ROOT" ;;
+  esac
+fi
 mkdir -p /newroot
 if [ -b "$DEV" ] && mount "$DEV" /newroot 2>/dev/null; then
   exec switch_root /newroot /sbin/init
