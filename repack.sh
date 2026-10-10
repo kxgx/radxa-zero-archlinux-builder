@@ -9,9 +9,9 @@ KREL=$(make -s -C linux-src kernelrelease)
 ROOTUUID=$(grep -oE 'UUID=[0-9a-f-]+' rootfs/etc/fstab | head -1 | cut -d= -f2)
 echo "KREL=$KREL ROOTUUID=$ROOTUUID"
 
-rm -rf bootfs; mkdir -p bootfs/extlinux
+rm -rf bootfs; mkdir -p bootfs/extlinux bootfs/dtbs
 cp linux-src/arch/arm64/boot/Image bootfs/Image
-cp linux-src/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dtb bootfs/
+cp linux-src/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dtb bootfs/dtbs/
 [ -f /work/initramfs.cpio.gz ] && cp /work/initramfs.cpio.gz bootfs/initramfs.cpio.gz
 cat > bootfs/extlinux/extlinux.conf <<EOF
 default l0
@@ -20,7 +20,7 @@ timeout 10
 
 label l0
 	linux /Image
-	fdt /meson-g12a-radxa-zero.dtb
+	fdtdir /dtbs/
 	initrd /initramfs.cpio.gz
 	append root=UUID=$ROOTUUID rootwait rw panic=5 earlycon consoleblank=0 console=tty0 console=ttyAML0,115200n8 coherent_pool=2M irqchip.gicv3_pseudo_nmi=0 cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory swapaccount=1
 EOF
@@ -47,7 +47,8 @@ rm -f boot.img root.img final.img
 mkfs.vfat -F 32 -n BOOT -C boot.img 524288
 mmd -i boot.img ::/extlinux
 mcopy -i boot.img bootfs/Image ::/Image
-mcopy -i boot.img bootfs/meson-g12a-radxa-zero.dtb ::/
+mmd -i boot.img ::/dtbs
+mcopy -i boot.img bootfs/dtbs/meson-g12a-radxa-zero.dtb ::/dtbs/
 [ -f bootfs/initramfs.cpio.gz ] && mcopy -i boot.img bootfs/initramfs.cpio.gz ::/initramfs.cpio.gz
 mcopy -i boot.img bootfs/extlinux/extlinux.conf ::/extlinux/extlinux.conf
 mcopy -i boot.img bootfs/wpa_supplicant.conf ::/wpa_supplicant.conf
