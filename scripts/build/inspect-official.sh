@@ -15,14 +15,14 @@ ls -la official-bl.bin
 echo "first 16 bytes:"; xxd official-bl.bin | head -2
 echo "=== [5] inspect each partition (find boot FAT) ==="
 for P in 1 2 3; do
-  S=$(fdisk -l official.img 2>/dev/null | awk -v p="official.img$P " '$0 ~ p {print $2}')
+  S=$(fdisk -l official.img 2>/dev/null | awk -v p="official.img$P " '$0 ~ p { if ($2 == "*") print $3; else print $2 }')
   [ -z "$S" ] && continue
   echo "--- partition $P start sector $S ---"
   mdir -i "official.img@@$((S*512))" ::/ 2>/dev/null | head -30 || echo "(not FAT)"
 done
 echo "=== [6] grab boot.scr / extlinux / boot.ini from FAT partitions ==="
 for P in 1 2 3; do
-  S=$(fdisk -l official.img 2>/dev/null | awk -v p="official.img$P " '$0 ~ p {print $2}')
+  S=$(fdisk -l official.img 2>/dev/null | awk -v p="official.img$P " '$0 ~ p { if ($2 == "*") print $3; else print $2 }')
   [ -z "$S" ] && continue
   mcopy -o -i "official.img@@$((S*512))" ::/boot.scr /work/official-boot.scr 2>/dev/null && echo "got boot.scr from p$P"
   mcopy -o -i "official.img@@$((S*512))" ::/boot.ini /work/official-boot.ini 2>/dev/null && echo "got boot.ini from p$P"
