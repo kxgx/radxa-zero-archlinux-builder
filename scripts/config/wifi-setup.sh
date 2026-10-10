@@ -33,6 +33,11 @@ pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy \
   archlinuxarm-keyring wireless-regdb inetutils less wget openbsd-netcat rsync \
   cronie git python parted wpa_supplicant sudo 2>/dev/null || true
 
+# Initialize the pacman keyring (C4 root cause: the image never ran pacman-key
+# --init, so nothing could be installed).  Best-effort (chroot has no RNG).
+chroot /work/rootfs pacman-key --init 2>/dev/null || true
+chroot /work/rootfs pacman-key --populate archlinuxarm 2>/dev/null || true
+
 # Ladder: normal install -> db-only + extract -> plain extract
 if ! pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy wpa_supplicant sudo; then
   echo "WARN: normal install failed, trying db-only + manual extract"
