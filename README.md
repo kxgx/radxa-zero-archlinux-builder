@@ -35,6 +35,7 @@ After flashing, open the **BOOT** partition (FAT32, editable in Notepad). Three 
 | `wpa_supplicant.conf` | Connect to WiFi on boot | `raspberrypi-net-mods` `wpa_copy` |
 | `ssh` (or `ssh.txt`, empty) | Enable SSH (off by default) | `raspberrypi-sys-mods` `sshswitch` |
 | `userconf.txt` | Line 1 = `username:password`, renames the default `alarm` user | `userconf-pi` `userconf` |
+| `hostname.txt` | Set the system hostname | first-boot hook |
 
 **WiFi example** (`wpa_supplicant.conf`):
 ```
@@ -54,6 +55,11 @@ bob:my-password
 (Plain text or a `openssl passwd -6` hash; the user is added to the `wheel` group for `sudo`.)
 
 The files are consumed on first boot (deleted afterwards, same as a real Raspberry Pi) so credentials don't linger on the FAT partition.
+
+### First-boot improvements (automatic)
+
+- **Partition auto-expand** — the root partition + filesystem grow to fill the whole SD card on first boot (`expand-rootfs.service`, non-interactive `sfdisk`+`partx`+`resize2fs`; always succeeds silently so the system never enters `degraded`).
+- **Fresh pacman keyring** — `pacman-key --init && pacman-key --populate archlinuxarm` runs at build time so `pacman` can install packages out of the box.
 
 ## Getting started
 
@@ -90,19 +96,15 @@ The finished image is written to `/work/radxa-zero-archlinux-*.img.xz` (mounted 
 
 ## Project layout
 
-| Script | Purpose |
+The stage scripts are grouped by function under `scripts/`:
+
+| Path | Purpose |
 |---|---|
-| `build-all.sh` | **Entry point** — runs the full build in order |
-| `build.sh` | Base build: kernel, Arch rootfs, firmware, U-Boot/FIP |
-| `inspect-official.sh` | Extract the official Radxa bootloader (BootROM-compatible) |
-| `wifi-setup.sh` | Install packages + Raspberry Pi–style boot-partition config |
-| `port-pi.sh` | Port the real Pi `wpa_copy` / `sshswitch` / `userconf` scripts + units |
-| `wifi-firmware-fix.sh` | WiFi firmware for the three possible WiFi modules |
-| `usb-gadget-composite.sh` | USB NCM network + ACM serial composite gadget |
-| `usb-console-fix.sh` / `usb-serial.sh` | USB serial console helpers |
-| `led-boot-status.sh` | Boot-status LED (no-peripheral debugging) |
-| `pstore-ramoops.sh` / `capture-panic.sh` | Optional: capture kernel panic logs without a console |
-| `repack.sh` | Assemble the final SD card image |
+| `build-all.sh` | **Entry point** — runs every stage in dependency order |
+| `scripts/build/` | Image pipeline — `build.sh` (kernel + rootfs + U-Boot/FIP), `inspect-official.sh` (official bootloader), `initramfs.sh`, `repack.sh` (assemble the SD image) |
+| `scripts/config/` | Rootfs + headless config — `wifi-setup.sh`, `port-pi.sh` (real Pi `wpa_copy`/`sshswitch`/`userconf`), `wifi-firmware-fix.sh` |
+| `scripts/usb/` | USB gadget — `usb-gadget-composite.sh`, `usb-console-fix.sh`, `usb-serial.sh` |
+| `scripts/debug/` | Diagnostics — `led-boot-status.sh`, `capture-panic.sh`, `pstore-ramoops.sh` |
 | `Dockerfile` | Cross-toolchain build container |
 
 ## Hardware support (mainline)
