@@ -27,7 +27,7 @@ rm -rf "$IR"
 mkdir -p "$IR"/bin "$IR"/proc "$IR"/sys "$IR"/dev "$IR"/mnt "$IR"/newroot
 cp /work/busybox-static "$IR"/bin/busybox
 chmod +x "$IR"/bin/busybox
-for a in sh mount umount blkid cp mkdir sync echo switch_root reboot ls cat sed; do
+for a in sh mount umount blkid cp mkdir sync echo switch_root reboot ls cat sed head; do
   ln -sf busybox "$IR"/bin/$a
 done
 
@@ -48,21 +48,27 @@ if [ -n "$BOOTDEV" ] && mount -o rw "$BOOTDEV" /mnt 2>/dev/null; then
   umount /mnt 2>/dev/null
 fi
 
-# find + mount the root: prefer the ARCHROOT label (known-good), then root= from cmdline
+# find + mount the root: ARCHROOT label, root=UUID from cmdline, then the common
+# mmcblk paths (busybox blkid -L/-U may be unavailable -- these hardcoded
+# fallbacks are what made the previous working image boot).
 DEV=$(blkid -L ARCHROOT 2>/dev/null)
 if [ -z "$DEV" ]; then
   ROOT=$(sed -n 's/.*root=\([^ 	]*\).*/\1/p' /proc/cmdline | head -1)
   case "$ROOT" in
     UUID=*)  DEV=$(blkid -U "${ROOT#UUID=}" 2>/dev/null) ;;
     LABEL=*) DEV=$(blkid -L "${ROOT#LABEL=}" 2>/dev/null) ;;
-    *) DEV="$ROOT" ;;
+    /dev/*) DEV="$ROOT" ;;
   esac
 fi
 mkdir -p /newroot
-if [ -b "$DEV" ] && mount "$DEV" /newroot 2>/dev/null; then
+if [ -n "$DEV" ] && mount "$DEV" /newroot 2>/dev/null; then
   exec switch_root /newroot /sbin/init
 fi
-echo "initramfs: cannot mount root (root=$ROOT dev=$DEV)" > /dev/kmsg 2>/dev/null
+for d in /dev/mmcblk0p2 /dev/mmcblk1p2; do
+  [ -b "$d" ] || continue
+  mount "$d" /newroot 2>/dev/null && exec switch_root /newroot /sbin/init
+done
+echo "initramfs: cannot mount root (dev=$DEV)" > /dev/kmsg 2>/dev/null
 reboot
 INIT
 chmod +x "$IR"/init
