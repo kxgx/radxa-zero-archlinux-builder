@@ -81,6 +81,41 @@ mkdir -p /work/rootfs/etc/sudoers.d
 echo '%wheel ALL=(ALL:ALL) ALL' > /work/rootfs/etc/sudoers.d/10-wheel
 chmod 440 /work/rootfs/etc/sudoers.d/10-wheel
 
+# --- first-boot root partition + filesystem expand (D1) ---------------------
+# The image root partition is small (~4G); expand it to fill the SD card on the
+# first boot.  parted -s is non-interactive (plain parted asked "Partition is
+# being used. Are you sure?" and the old service exited 1).
+cat > /work/rootfs/usr/local/bin/expand-rootfs <<'EOF'
+#!/bin/sh
+set -e
+ROOTDEV=$(findmnt -n -o SOURCE /)
+DISK=$(lsblk -no PKNAME "$ROOTDEV")
+PARTNUM=$(cat "/sys/class/block/$(basename "$ROOTDEV")/partition")
+parted -s "/dev/$DISK" resizepart "$PARTNUM" 100%
+resize2fs "$ROOTDEV"
+touch /var/lib/expand-rootfs-done
+EOF
+chmod +x /work/rootfs/usr/local/bin/expand-rootfs
+
+cat > /work/rootfs/etc/systemd/system/expand-rootfs.service <<'EOF'
+[Unit]
+Description=Expand root filesystem to fill the SD card (first boot)
+DefaultDependencies=no
+After=systemd-fsck-root.service
+Before=systemd-remount-fs.service
+ConditionPathExists=!/var/lib/expand-rootfs-done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/expand-rootfs
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+mkdir -p /work/rootfs/etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/expand-rootfs.service /work/rootfs/etc/systemd/system/multi-user.target.wants/expand-rootfs.service
+
 # sshd OFF by default (Pi semantics: drop an empty `ssh` file on BOOT to enable)
 rm -f /work/rootfs/etc/systemd/system/multi-user.target.wants/sshd.service
 
