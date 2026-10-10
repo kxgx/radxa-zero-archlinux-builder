@@ -180,21 +180,7 @@ cd /work
 echo "=== [8/8] Image assembly (handled by repack.sh) ==="
 
 ### Ship #####################################################################
-mkdir -p /out
-cp "$IMGFILE.xz" /out/
-sha256sum /out/"$IMGFILE.xz" > /out/SHA256SUMS.txt
-{
-  echo "image: $IMGFILE.xz"
-  echo "kernel: vanilla mainline $KREL"
-  echo "kernel config: armbian/build linux-meson64-edge.config (7.3) + DEBUG_INFO off"
-  echo "u-boot: mainline $UBOOT_TAG (radxa-zero_defconfig) + LibreELEC amlogic-boot-fip g12a FIP"
-  echo "rootfs: Arch Linux ARM generic AArch64 latest"
-  echo "rootfs uuid: $ROOTUUID"
-  echo "root partition: ${ROOTSIZE}MB, boot: 512MB (offset 16MiB)"
-  echo "modules: $(ls rootfs/usr/lib/modules | tr '\n' ' ')"
-  echo "image size: $(du -sm "$IMGFILE" | cut -f1)MB, xz: $(du -sm "$IMGFILE.xz" | cut -f1)MB"
-  echo "built: $(date -u)"
-} | tee /out/BUILD-INFO.txt
-
-cp /work/build.log /out/build.log 2>/dev/null || true
-echo "=== BUILD COMPLETE: /out/$IMGFILE.xz ==="
+# NOTE: the image + build info are written by scripts/build/repack.sh.  build.sh
+# ends after preparing the kernel/rootfs/U-Boot; it no longer writes an image, so
+# there is nothing to ship here.
+echo "=== build.sh done (image handled by repack.sh) ==="
