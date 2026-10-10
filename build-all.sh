@@ -9,35 +9,36 @@
 #   docker build -t rz-builder .
 #   docker run --rm -v rz-build:/work -v "$PWD":/host:ro rz-builder bash /host/build-all.sh
 #
-# NOTE: some of the stage scripts below were developed iteratively and their
-# responsibilities overlap slightly (e.g. wifi-setup.sh vs port-pi.sh both set up
-# the Raspberry Pi boot-partition mechanism).  Running them in this order produces
-# the working image; later stages overwrite earlier ones where they overlap.
+# Stage scripts are grouped by function under scripts/:
+#   scripts/build/   - image pipeline: bootloader, kernel+rootfs, initramfs, assembly
+#   scripts/config/  - rootfs config + Raspberry Pi-style headless config + WiFi
+#   scripts/usb/     - USB gadget (network + serial console)
+#   scripts/debug/   - diagnostics (LED, optional panic capture)
 set -euo pipefail
 
 cd /work
 
 echo "=== [1/7] Official Radxa bootloader (BootROM-compatible) ==="
-bash /host/inspect-official.sh
+bash /host/scripts/build/inspect-official.sh
 
 echo "=== [2/7] Base build: kernel + Arch rootfs + firmware + U-Boot/FIP ==="
-bash /host/build.sh
+bash /host/scripts/build/build.sh
 
 echo "=== [3/7] Packages + Raspberry Pi-style boot-partition config ==="
-bash /host/wifi-setup.sh
+bash /host/scripts/config/wifi-setup.sh
 
 echo "=== [4/7] Pi scripts/units: wpa_copy, sshswitch, userconf ==="
-bash /host/port-pi.sh
+bash /host/scripts/config/port-pi.sh
 
 echo "=== [5/7] WiFi firmware for all three WiFi module variants ==="
-bash /host/wifi-firmware-fix.sh
+bash /host/scripts/config/wifi-firmware-fix.sh
 
 echo "=== [6/7] USB gadget: NCM network + ACM serial console ==="
-bash /host/usb-gadget-composite.sh
+bash /host/scripts/usb/usb-gadget-composite.sh
 
 echo "=== [7/7] Boot-status LED + initramfs + assemble SD image ==="
-bash /host/led-boot-status.sh
-bash /host/initramfs.sh
-bash /host/repack.sh
+bash /host/scripts/debug/led-boot-status.sh
+bash /host/scripts/build/initramfs.sh
+bash /host/scripts/build/repack.sh
 
 echo "=== build-all done: image in /work/radxa-zero-archlinux-*.img.xz ==="
