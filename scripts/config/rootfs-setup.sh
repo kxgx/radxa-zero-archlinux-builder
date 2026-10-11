@@ -2,8 +2,8 @@
 # Radxa Zero image: rootfs base system configuration.
 # Installs base packages + a fresh pacman keyring, sets up zsh + oh-my-zsh as the
 # default shell, and configures the base system (wireless network, netdev group,
-# sudoers, first-boot partition auto-expand).  The Raspberry Pi headless
-# boot-partition mechanism (wpa_copy/sshswitch/userconf) lives in port-pi.sh.
+# sudoers, first-boot partition auto-expand).  The unified first-boot config
+# (config.txt) is applied by scripts/config/firstboot-config.sh.
 set -euo pipefail
 exec > >(tee -a /work/rootfs-setup.log) 2>&1
 echo "=== rootfs-setup $(date -u) ==="
@@ -93,9 +93,8 @@ for bin in wpa_supplicant sudo; do
 done
 ls -la /work/rootfs/usr/bin/wpa_supplicant /work/rootfs/usr/bin/sudo
 
-# NOTE: the Raspberry Pi-style boot configurator (userconf/ssh/wpa from the BOOT
-# partition) is installed by scripts/config/port-pi.sh (the real Pi code).  It is
-# NOT duplicated here.
+# NOTE: the unified first-boot config (config.txt: wifi/user/ssh/hostname/timezone)
+# is applied by scripts/config/firstboot-config.sh.  It is NOT duplicated here.
 
 cat > /work/rootfs/etc/systemd/network/25-wireless.network <<'EOF'
 [Match]

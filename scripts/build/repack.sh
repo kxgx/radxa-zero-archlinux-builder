@@ -24,23 +24,23 @@ label l0
 	initrd /initramfs.cpio.gz
 	append root=UUID=$ROOTUUID rootwait rw panic=5 earlycon consoleblank=0 console=tty0 console=ttyAML0,115200n8 coherent_pool=2M irqchip.gicv3_pseudo_nmi=0 cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory swapaccount=1
 EOF
-cat > bootfs/wpa_supplicant.conf <<'EOF'
-# 树莓派风格 WiFi 配置：取消注释并填写后保存，开机自动连接（SSH 默认已开启）
-country=CN
-ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-update_config=1
-#network={
-#    ssid="你的WiFi名称"
-#    psk="你的WiFi密码"
-#}
-# 多个网络可写多个 network={...} 块；隐藏网络在块内加 scan_ssid=1
-EOF
+cat > bootfs/config.txt <<'EOF'
+# Radxa Zero 统一启动配置 config.txt（用 boot-config 工具填写，或手动编辑）
+# 一行一个 key=value，# 开头为注释。首启应用后本文件会被删除。
+# 建议用 boot-config 工具：它会把密码哈希/派生（不存明文）。
 
-cat > bootfs/userconf.txt <<'EOF'
-#username:password
-#↑ 把第 1 行改成  用户名:密码  （明文，或 openssl passwd -6 生成的 SHA-512 哈希）
-# 开机会把默认用户 alarm 重命名为你指定的用户名并设置密码，自动加入 wheel 组可 sudo
-# 只有第 1 行会被读取（树莓派 userconf.txt 标准格式）；其余是说明，不会被处理
+hostname=radxa-zero
+timezone=Asia/Shanghai
+ssh=1
+
+# WiFi：wifi_psk 填 PBKDF2 派生的 64 位 hex（工具生成），或先填明文口令
+#wifi_ssid=你的WiFi名称
+#wifi_country=CN
+#wifi_psk=你的WiFi口令或派生hex
+
+# 用户：password_hash 填 openssl passwd -6 的哈希（工具生成），不要存明文密码
+#username=xg
+#password_hash=$6$...
 EOF
 
 rm -f boot.img root.img final.img
@@ -50,8 +50,7 @@ mcopy -i boot.img bootfs/Image ::/Image
 mcopy -i boot.img bootfs/meson-g12a-radxa-zero.dtb ::/
 [ -f bootfs/initramfs.cpio.gz ] && mcopy -i boot.img bootfs/initramfs.cpio.gz ::/initramfs.cpio.gz
 mcopy -i boot.img bootfs/extlinux/extlinux.conf ::/extlinux/extlinux.conf
-mcopy -i boot.img bootfs/wpa_supplicant.conf ::/wpa_supplicant.conf
-mcopy -i boot.img bootfs/userconf.txt ::/userconf.txt
+mcopy -i boot.img bootfs/config.txt ::/config.txt
 
 ROOTUSED=$(du -sm rootfs | cut -f1)
 ROOTSIZE=$(( (ROOTUSED + ROOTUSED/3 + 300) / 256 * 256 + 256 ))
@@ -93,12 +92,12 @@ sha256sum /out/"$IMGFILE.xz" > /out/SHA256SUMS.txt
   echo "kernel config: armbian/build linux-meson64-edge.config (7.3) + DEBUG_INFO off"
   echo "u-boot: OFFICIAL Radxa bootloader (Radxa-signed, from official Debian image) + extlinux"
   echo "rootfs: Arch Linux ARM generic AArch64 latest + wpa_supplicant + sudo"
-  echo "bootcfg: REAL Raspberry Pi OS scripts ported (minimal Arch adaptation)"
-  echo "  BOOT/wpa_supplicant.conf -> wifi via raspberrypi-net-mods wpa_copy (Bullseye 1.3.4)"
-  echo "  BOOT/ssh | ssh.txt       -> enable sshd via raspberrypi-sys-mods sshswitch"
-  echo "  BOOT/userconf.txt        -> rename default user via userconf-pi userconf"
-  echo "  BOOT partition mounted at /boot/firmware (Bookworm-style)"
-  echo "sshd: DISABLED by default (Pi semantics: drop empty ssh file on BOOT to enable)"
+  echo "bootcfg: unified BOOT/config.txt applied on first boot (boot-config-apply)"
+  echo "  config.txt keys: hostname, timezone, ssh, wifi_ssid/wifi_psk/wifi_country,"
+  echo "                   username, password_hash"
+  echo "  secrets hashed (SHA-512 crypt user, derived hex WiFi PSK) -- no plaintext"
+  echo "  BOOT partition mounted at /boot/firmware"
+  echo "sshd: enabled per config.txt (ssh=1); host keys regenerated on first boot"
   echo "rootfs uuid: $ROOTUUID"
   echo "root partition: ${ROOTSIZE}MB, boot: 512MB (offset 16MiB)"
   echo "image size: $(du -sm "$IMGFILE" | cut -f1)MB, xz: $(du -sm "$IMGFILE.xz" | cut -f1)MB"
