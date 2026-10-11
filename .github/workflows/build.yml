@@ -75,7 +75,7 @@ jobs:
 
       - name: 4. 机密扫描（禁止硬编码密码/私钥）
         run: |
-          if grep -rnEi 'psk\s*=\s*["'"'"'][^"'"'"']{6,}|password\s*=\s*["'"'"'][^"'"'"']+|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY' --include='*.sh' --include='Dockerfile' . | grep -v '你的WiFi密码\|你的密码\|my-password\|your-wifi'; then
+          if grep -rnEi 'psk\s*=\s*["'"'"'][^$"'"'"'][^"'"'"']{5,}|password\s*=\s*["'"'"'][^$"'"'"'][^"'"'"']*|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY' --include='*.sh' --include='Dockerfile' . | grep -v '你的WiFi密码\|你的密码\|my-password\|your-wifi'; then
             echo "FAIL: potential hard-coded secret found"; exit 1
           fi
           echo "OK: no secrets"
