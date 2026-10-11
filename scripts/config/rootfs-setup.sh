@@ -121,6 +121,14 @@ mkdir -p /work/rootfs/etc/sudoers.d
 echo '%wheel ALL=(ALL:ALL) ALL' > /work/rootfs/etc/sudoers.d/10-wheel
 chmod 440 /work/rootfs/etc/sudoers.d/10-wheel
 
+# SSH: keep sessions alive (prevents idle / NAT timeouts from dropping the link)
+mkdir -p /work/rootfs/etc/ssh/sshd_config.d
+cat > /work/rootfs/etc/ssh/sshd_config.d/keepalive.conf <<'EOF'
+ClientAliveInterval 30
+ClientAliveCountMax 3
+TCPKeepAlive yes
+EOF
+
 # --- first-boot root partition + filesystem expand (D1) ---------------------
 # The image root partition is small (~4G); expand it to fill the SD card on the
 # first boot.  parted -s is non-interactive (plain parted asked "Partition is
