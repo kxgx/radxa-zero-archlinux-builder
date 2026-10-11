@@ -39,28 +39,38 @@ chroot /work/rootfs pacman-key --init 2>/dev/null || true
 chroot /work/rootfs pacman-key --populate archlinuxarm 2>/dev/null || true
 
 # --- zsh + oh-my-zsh as the default shell (rootfs base config) ---
-# oh-my-zsh goes in a shared dir; a system-wide zshrc enables it for every user.
-# Root and future users (useradd default) get zsh as their login shell.
-ZSH_DIR=/work/rootfs/usr/share/oh-my-zsh
-rm -rf "$ZSH_DIR"
-git clone --depth 1 https://github.com/ohmyzsh/ohmyzsh.git "$ZSH_DIR" 2>/dev/null \
-  || echo "WARN: oh-my-zsh clone failed (no network at build?)"
+# zsh becomes the login shell, so it MUST be present.  Install it robustly
+# (retry) and verify before switching any shell -- a missing zsh would break
+# login.  Only then set up oh-my-zsh and make zsh the default.
+for _try in 1 2 3; do
+  [ -x /work/rootfs/usr/bin/zsh ] && break
+  pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy zsh 2>/dev/null || true
+done
 
-mkdir -p /work/rootfs/etc/zsh /work/rootfs/etc/skel /work/rootfs/etc/default
-cat > /work/rootfs/etc/zsh/zshrc <<'EOF'
+if [ -x /work/rootfs/usr/bin/zsh ]; then
+  ZSH_DIR=/work/rootfs/usr/share/oh-my-zsh
+  rm -rf "$ZSH_DIR"
+  git clone --depth 1 https://github.com/ohmyzsh/ohmyzsh.git "$ZSH_DIR" 2>/dev/null \
+    || echo "WARN: oh-my-zsh clone failed (no network at build?)"
+
+  mkdir -p /work/rootfs/etc/zsh /work/rootfs/etc/skel /work/rootfs/etc/default
+  cat > /work/rootfs/etc/zsh/zshrc <<'EOF'
 # system-wide zshrc: enable oh-my-zsh for all users
 export ZSH=/usr/share/oh-my-zsh
 ZSH_THEME="robbyrussell"
 plugins=(git)
 [ -f "$ZSH/oh-my-zsh.sh" ] && source "$ZSH/oh-my-zsh.sh"
 EOF
-cp /work/rootfs/etc/zsh/zshrc /work/rootfs/etc/skel/.zshrc
+  cp /work/rootfs/etc/zsh/zshrc /work/rootfs/etc/skel/.zshrc
 
-# default login shell = zsh (root now, useradd for future users)
-sed -i 's#^\(root:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:\).*#\1/bin/zsh#' /work/rootfs/etc/passwd
-grep -qx '/bin/zsh' /work/rootfs/etc/shells 2>/dev/null || echo '/bin/zsh' >> /work/rootfs/etc/shells
-sed -i 's#^SHELL=.*#SHELL=/bin/zsh#' /work/rootfs/etc/default/useradd 2>/dev/null \
-  || echo 'SHELL=/bin/zsh' >> /work/rootfs/etc/default/useradd
+  # default login shell = zsh (root now, useradd default for future users)
+  sed -i 's#^\(root:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:\).*#\1/bin/zsh#' /work/rootfs/etc/passwd
+  grep -qx '/bin/zsh' /work/rootfs/etc/shells 2>/dev/null || echo '/bin/zsh' >> /work/rootfs/etc/shells
+  sed -i 's#^SHELL=.*#SHELL=/bin/zsh#' /work/rootfs/etc/default/useradd 2>/dev/null \
+    || echo 'SHELL=/bin/zsh' >> /work/rootfs/etc/default/useradd
+else
+  echo "WARN: zsh failed to install; NOT changing the default shell (would break login)"
+fi
 
 # Ladder: normal install -> db-only + extract -> plain extract
 if ! pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy wpa_supplicant sudo; then
