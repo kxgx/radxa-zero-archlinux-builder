@@ -72,13 +72,6 @@ else
   echo "WARN: zsh failed to install; NOT changing the default shell (would break login)"
 fi
 
-# --- timezone (edit TIMEZONE, or pass TIMEZONE=... at build, to change) ---
-TIMEZONE="${TIMEZONE:-Asia/Shanghai}"
-pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -S tzdata 2>/dev/null || true
-ln -sf "/usr/share/zoneinfo/$TIMEZONE" /work/rootfs/etc/localtime
-# hardware clock keeps UTC (standard for Linux)
-printf '0.0 0 0.0\n0\nUTC\n' > /work/rootfs/etc/adjtime
-
 # Ladder: normal install -> db-only + extract -> plain extract
 if ! pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy wpa_supplicant sudo; then
   echo "WARN: normal install failed, trying db-only + manual extract"
