@@ -258,7 +258,7 @@ grep -q '/boot/firmware' "$R/etc/fstab" 2>/dev/null || \
   echo '/dev/disk/by-label/BOOT  /boot/firmware  vfat  defaults,umask=0022  0  0' >> "$R/etc/fstab"
 
 # NOTE: network (25-wireless.network), netdev group, sudoers, and sshd-off are
-# configured by scripts/config/wifi-setup.sh (rootfs base config).  This script
+# configured by scripts/config/rootfs-setup.sh (rootfs base config).  This script
 # only installs the Raspberry Pi headless mechanism.
 
 echo "--- installed files ---"
