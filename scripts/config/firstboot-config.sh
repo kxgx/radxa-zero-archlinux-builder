@@ -88,13 +88,19 @@ fi
 if [ -n "$CFG_SSID" ]; then
   CC="${CFG_CC:-CN}"
   mkdir -p /etc/wpa_supplicant
+  # A 64-hex PSK must be UNQUOTED (psk=<hex>, a raw key); a passphrase is quoted.
+  if [ "${#CFG_PSK}" = "64" ]; then
+    PSKLINE="    psk=$CFG_PSK"
+  else
+    PSKLINE="    psk=\"$CFG_PSK\""
+  fi
   cat > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf <<EOF
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 country=$CC
 network={
     ssid="$CFG_SSID"
-    psk="$CFG_PSK"
+$PSKLINE
 }
 EOF
   chmod 600 /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
