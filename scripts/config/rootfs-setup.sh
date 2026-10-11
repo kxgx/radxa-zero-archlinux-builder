@@ -62,6 +62,13 @@ plugins=(git)
 [ -f "$ZSH/oh-my-zsh.sh" ] && source "$ZSH/oh-my-zsh.sh"
 EOF
   cp /work/rootfs/etc/zsh/zshrc /work/rootfs/etc/skel/.zshrc
+  # Also drop .zshrc into root's and every existing user's home (e.g. the default
+  # "alarm" user, which first-boot renames).  Without ~/.zshrc zsh runs
+  # zsh-newuser-install on every login.
+  cp /work/rootfs/etc/zsh/zshrc /work/rootfs/root/.zshrc 2>/dev/null || true
+  for h in /work/rootfs/home/*/; do
+    [ -d "$h" ] && cp /work/rootfs/etc/zsh/zshrc "$h/.zshrc" 2>/dev/null || true
+  done
 
   # default login shell = zsh (root now, useradd default for future users)
   sed -i 's#^\(root:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:\).*#\1/bin/zsh#' /work/rootfs/etc/passwd
