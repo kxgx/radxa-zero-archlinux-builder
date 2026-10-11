@@ -25,7 +25,7 @@ echo "=== [2/7] Base build: kernel + Arch rootfs + firmware + U-Boot/FIP ==="
 bash /host/scripts/build/build.sh
 
 echo "=== [3/7] Packages + Raspberry Pi-style boot-partition config ==="
-bash /host/scripts/config/wifi-setup.sh
+bash /host/scripts/config/rootfs-setup.sh
 
 echo "=== [4/7] Pi scripts/units: wpa_copy, sshswitch, userconf ==="
 bash /host/scripts/config/port-pi.sh

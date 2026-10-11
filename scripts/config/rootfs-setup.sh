@@ -1,12 +1,12 @@
 #!/bin/bash
-# Radxa Zero image: full Raspberry-Pi-style boot-partition configuration mechanism
-# FAT BOOT partition files (Windows-editable):
-#   wpa_supplicant.conf  -> WiFi (copied to /etc/wpa_supplicant/, consumed)
-#   ssh / ssh.txt        -> enable sshd (consumed)
-#   userconf.txt         -> "user:password-or-hash" create/update user (consumed)
+# Radxa Zero image: rootfs base system configuration.
+# Installs base packages + a fresh pacman keyring, sets up zsh + oh-my-zsh as the
+# default shell, and configures the base system (wireless network, netdev group,
+# sudoers, first-boot partition auto-expand).  The Raspberry Pi headless
+# boot-partition mechanism (wpa_copy/sshswitch/userconf) lives in port-pi.sh.
 set -euo pipefail
-exec > >(tee -a /work/wifi-setup.log) 2>&1
-echo "=== pi-mechanism-setup $(date -u) ==="
+exec > >(tee -a /work/rootfs-setup.log) 2>&1
+echo "=== rootfs-setup $(date -u) ==="
 
 DEBIAN_FRONTEND=noninteractive apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pacman-package-manager
@@ -31,12 +31,36 @@ EOF
 # a missing package must not abort the build.
 pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy \
   archlinuxarm-keyring wireless-regdb inetutils less wget openbsd-netcat rsync \
-  cronie git python parted wpa_supplicant sudo 2>/dev/null || true
+  cronie git python parted zsh wpa_supplicant sudo 2>/dev/null || true
 
 # Initialize the pacman keyring (C4 root cause: the image never ran pacman-key
 # --init, so nothing could be installed).  Best-effort (chroot has no RNG).
 chroot /work/rootfs pacman-key --init 2>/dev/null || true
 chroot /work/rootfs pacman-key --populate archlinuxarm 2>/dev/null || true
+
+# --- zsh + oh-my-zsh as the default shell (rootfs base config) ---
+# oh-my-zsh goes in a shared dir; a system-wide zshrc enables it for every user.
+# Root and future users (useradd default) get zsh as their login shell.
+ZSH_DIR=/work/rootfs/usr/share/oh-my-zsh
+rm -rf "$ZSH_DIR"
+git clone --depth 1 https://github.com/ohmyzsh/ohmyzsh.git "$ZSH_DIR" 2>/dev/null \
+  || echo "WARN: oh-my-zsh clone failed (no network at build?)"
+
+mkdir -p /work/rootfs/etc/zsh /work/rootfs/etc/skel /work/rootfs/etc/default
+cat > /work/rootfs/etc/zsh/zshrc <<'EOF'
+# system-wide zshrc: enable oh-my-zsh for all users
+export ZSH=/usr/share/oh-my-zsh
+ZSH_THEME="robbyrussell"
+plugins=(git)
+[ -f "$ZSH/oh-my-zsh.sh" ] && source "$ZSH/oh-my-zsh.sh"
+EOF
+cp /work/rootfs/etc/zsh/zshrc /work/rootfs/etc/skel/.zshrc
+
+# default login shell = zsh (root now, useradd for future users)
+sed -i 's#^\(root:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:\).*#\1/bin/zsh#' /work/rootfs/etc/passwd
+grep -qx '/bin/zsh' /work/rootfs/etc/shells 2>/dev/null || echo '/bin/zsh' >> /work/rootfs/etc/shells
+sed -i 's#^SHELL=.*#SHELL=/bin/zsh#' /work/rootfs/etc/default/useradd 2>/dev/null \
+  || echo 'SHELL=/bin/zsh' >> /work/rootfs/etc/default/useradd
 
 # Ladder: normal install -> db-only + extract -> plain extract
 if ! pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy wpa_supplicant sudo; then
