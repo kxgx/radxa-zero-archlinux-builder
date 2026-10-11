@@ -97,7 +97,7 @@ NEWPASS=$2
 if [ "$FIRSTUSER" != "$NEWNAME" ]; then
     rename_user
 fi
-usermod -s /bin/bash "$NEWNAME"
+if command -v zsh >/dev/null 2>&1; then usermod -s /bin/zsh "$NEWNAME"; else usermod -s /bin/bash "$NEWNAME"; fi
 if [ -n "$NEWPASS" ]; then
     case "$NEWPASS" in
       \$*) echo "$NEWNAME:$NEWPASS" | chpasswd -e ;;
