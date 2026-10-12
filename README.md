@@ -74,7 +74,7 @@ Pop the SD card back into your PC, edit the BOOT partition files (WiFi / `ssh` /
 
 ### 3. Connect (any of these)
 - **USB serial** — plug the USB-C **OTG** port into your PC; a COM port appears (115200 8N1). Log in as `root` / `root`.
-- **USB network SSH** — the same cable also shows a USB NIC. Zero-config path: `ssh root@169.254.31.200` (Windows self-assigns a 169.254.x APIPA address, no admin rights needed). Or set your PC to `192.168.100.2/24` and use `ssh root@192.168.100.1`.
+- **USB network SSH** — the same cable also shows a USB NIC with a built-in DHCP server: the PC gets `192.168.100.x` automatically, then `ssh root@192.168.100.1`. Zero-config fallback (no DHCP, no admin rights needed): `ssh root@169.254.31.200` (APIPA link-local). Or set your PC statically to `192.168.100.2/24`.
 - **WiFi SSH** — find `radxa-zero` in your router's DHCP list, then `ssh root@<ip>`.
 
 ## Building from source

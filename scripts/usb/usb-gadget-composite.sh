@@ -82,21 +82,32 @@ rm -f "$R/etc/modules-load.d/gadget-serial.conf" \
       "$R/etc/systemd/system/multi-user.target.wants/usb-gadget-console.service" \
       "$R/etc/systemd/system/usb-gadget-console.service"
 
-# --- network: usb0 IPs so the PC can SSH over USB ---
-# 192.168.100.1/24  = standard setup (PC side: 192.168.100.2/24)
-# 169.254.31.200/16 = link-local fallback: Windows self-assigns 169.254.x
-#   (APIPA) when no DHCP answers, so ssh root@169.254.31.200 works with zero
-#   PC-side configuration and without admin rights (verified on Windows 11
-#   with the UsbNcm host driver). ConfigureWithoutCarrier keeps both
-#   addresses applied even before the host enumerates the link.
+# --- network: usb0 DHCP server + fallback IPs so the PC can SSH over USB ---
+# DHCPServer=yes in [Network] is REQUIRED on systemd 261+: the [DHCPServer]
+# section only holds parameters and does not enable the server. ServerAddress=
+# needs a prefix length and disambiguates the pool when the link has several
+# addresses. Result: plugging the USB-C cable gives the PC a 192.168.100.x
+# lease automatically -> ssh root@192.168.100.1 (verified: Windows 11 got
+# 192.168.100.109 from the .100-.119 pool).
+# 169.254.31.200/16 = link-local fallback for hosts that self-assign APIPA
+#   when no DHCP answers (Windows without admin rights):
+#   ssh root@169.254.31.200, zero PC-side configuration.
+# ConfigureWithoutCarrier keeps the addresses applied before the host
+#   enumerates the link.
 cat > "$R/etc/systemd/network/20-usb-gadget.network" <<'EOF'
 [Match]
 Name=usb*
 
 [Network]
+DHCPServer=yes
 Address=192.168.100.1/24
 Address=169.254.31.200/16
 ConfigureWithoutCarrier=yes
+
+[DHCPServer]
+ServerAddress=192.168.100.1/24
+PoolOffset=100
+PoolSize=20
 EOF
 
 echo "--- enabled:"; ls "$R/etc/systemd/system/multi-user.target.wants/" | grep -E "usb-gadget|ttyGS0" || true
