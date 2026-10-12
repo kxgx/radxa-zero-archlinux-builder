@@ -82,13 +82,21 @@ rm -f "$R/etc/modules-load.d/gadget-serial.conf" \
       "$R/etc/systemd/system/multi-user.target.wants/usb-gadget-console.service" \
       "$R/etc/systemd/system/usb-gadget-console.service"
 
-# --- network: usb0 static IP so the PC can SSH over USB ---
+# --- network: usb0 IPs so the PC can SSH over USB ---
+# 192.168.100.1/24  = standard setup (PC side: 192.168.100.2/24)
+# 169.254.31.200/16 = link-local fallback: Windows self-assigns 169.254.x
+#   (APIPA) when no DHCP answers, so ssh root@169.254.31.200 works with zero
+#   PC-side configuration and without admin rights (verified on Windows 11
+#   with the UsbNcm host driver). ConfigureWithoutCarrier keeps both
+#   addresses applied even before the host enumerates the link.
 cat > "$R/etc/systemd/network/20-usb-gadget.network" <<'EOF'
 [Match]
 Name=usb*
 
 [Network]
 Address=192.168.100.1/24
+Address=169.254.31.200/16
+ConfigureWithoutCarrier=yes
 EOF
 
 echo "--- enabled:"; ls "$R/etc/systemd/system/multi-user.target.wants/" | grep -E "usb-gadget|ttyGS0" || true
