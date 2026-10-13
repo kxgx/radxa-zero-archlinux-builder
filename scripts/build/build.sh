@@ -170,6 +170,11 @@ else
 fi
 mv -f u-boot.bin u-boot.bin.sd.bin
 ls -la u-boot.bin.sd.bin
+# NOTE: despite the .sd.bin name this is the bare aml_encrypt FIP bundle
+# (BL2 is packed as a FIP entry), NOT the Armbian SD layout of
+# [signed BL2 head @0] + [FIP @512]. The BootROM will not boot it from the
+# SD slot -- repack.sh uses the official Radxa bootloader instead and
+# refuses to fall back to this file.
 cd /work
 
 ### 8. Image assembly ########################################################

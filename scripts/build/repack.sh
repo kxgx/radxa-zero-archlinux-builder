@@ -67,15 +67,38 @@ truncate -s $((TOTAL_SECTORS * 512)) final.img
 printf 'label: dos\nstart=%d, size=%d, type=c, bootable\nstart=%d, type=83\n' \
   "$BOOT_START" "$BOOT_SIZE" "$ROOT_START" | sfdisk --no-reread --no-tell-kernel final.img
 
-# Bootloader: OFFICIAL Radxa bootloader (Radxa-signed, BootROM accepts it).
-# Written with the Amlogic convention (BL2 head @0 + FIP @512), preserving our MBR.
+# Bootloader: OFFICIAL Radxa bootloader (Radxa-signed -- the BootROM only
+# accepts a vendor-signed BL2 head at sector 0, with the FIP at sector 1).
+# inspect-official.sh extracts it as official-bootloader.img (and
+# official-bl.bin). A bare aml_encrypt --bootmk output is a FIP-only blob
+# and is NOT a drop-in replacement: written with this layout it puts the FIP
+# at sector 0 and the image never boots (this is exactly what made the
+# v0.1.4 CI release unbootable while local builds worked).
 BL=/work/official-bootloader.img
-[ -f "$BL" ] || BL=uboot/u-boot.bin.sd.bin
+[ -f "$BL" ] || BL=/work/official-bl.bin
+if [ ! -f "$BL" ]; then
+	echo "FATAL: official Radxa bootloader not found (tried official-bootloader.img, official-bl.bin)."
+	echo "       Run scripts/build/inspect-official.sh first -- a locally signed"
+	echo "       FIP without the Radxa BL2 head will NOT boot."
+	exit 1
+fi
+echo "bootloader: $BL"
 dd if="$BL" of=final.img bs=1 count=442 conv=notrunc status=none
 dd if="$BL" of=final.img bs=512 skip=1 seek=1 conv=notrunc status=none
 dd if=boot.img of=final.img bs=512 seek=$BOOT_START conv=notrunc status=none
 dd if=root.img of=final.img bs=512 seek=$ROOT_START conv=notrunc status=none
 sync
+
+# Verify the bootloader landed intact: BL2 head at 0 + FIP (non-zero) at 512.
+SRC_HEAD=$(dd if="$BL" bs=1 count=442 2>/dev/null | sha256sum | cut -d' ' -f1)
+IMG_HEAD=$(dd if=final.img bs=1 count=442 2>/dev/null | sha256sum | cut -d' ' -f1)
+[ "$SRC_HEAD" = "$IMG_HEAD" ] || { echo "FATAL: BL2 head mismatch in final.img"; exit 1; }
+IMG_FIP=$(dd if=final.img bs=1 skip=512 count=16 2>/dev/null | xxd -p | tr -d '\n')
+if [ -z "$IMG_FIP" ] || [ "$IMG_FIP" = "00000000000000000000000000000000" ]; then
+	echo "FATAL: no FIP at sector 1 of final.img (wrong bootloader layout)"
+	exit 1
+fi
+echo "bootloader verified: BL2 head + FIP in place"
 
 fdisk -l final.img || true
 IMGFILE=radxa-zero-archlinux-linux-${KREL}.img

@@ -12,6 +12,9 @@ fdisk -l official.img
 echo "=== [4] first 4MB (bootloader area) ==="
 dd if=official.img of=official-bl.bin bs=1M count=4 status=none
 ls -la official-bl.bin
+# canonical name consumed by repack.sh (BL2 head @0 + FIP @512, Radxa-signed)
+cp -f official-bl.bin official-bootloader.img
+echo "official bootloader ready: /work/official-bootloader.img"
 echo "first 16 bytes:"; xxd official-bl.bin | head -2
 echo "=== [5] inspect each partition (find boot FAT) ==="
 for P in 1 2 3; do
