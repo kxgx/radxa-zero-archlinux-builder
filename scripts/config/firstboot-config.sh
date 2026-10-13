@@ -30,6 +30,21 @@ cat > "$R/usr/local/bin/boot-config-apply" <<'HOOK'
 set -u
 log() { echo "boot-config: $*"; }
 
+# --- pacman keyring self-heal -------------------------------------------
+# Images can ship without established keyring trust (the build chroot has no
+# RNG for pacman-key --init), whose symptom is every `pacman -Syu` failing
+# with "signature ... is unknown trust". Populate stamps trust on the keys
+# already shipped in /usr/share/pacman/keyrings -- offline-safe.
+log "ensuring pacman keyring trust"
+pacman-key --init >/dev/null 2>&1 || log "WARN: pacman-key --init failed"
+if pacman-key --populate archlinuxarm >/dev/null 2>&1 \
+	|| pacman-key --populate archlinux >/dev/null 2>&1; then
+	log "pacman keyring trust established"
+else
+	log "WARN: pacman-key --populate failed; pacman -Syu may report unknown trust"
+fi
+# ------------------------------------------------------------------------
+
 BOOT=""
 for d in /dev/mmcblk0p1 /dev/mmcblk1p1; do
   [ -b "$d" ] || continue

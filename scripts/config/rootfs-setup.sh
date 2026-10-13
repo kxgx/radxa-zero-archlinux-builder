@@ -33,10 +33,20 @@ pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy \
   archlinuxarm-keyring wireless-regdb inetutils less wget openbsd-netcat rsync \
   cronie git python parted zsh wpa_supplicant sudo 2>/dev/null || true
 
-# Initialize the pacman keyring (C4 root cause: the image never ran pacman-key
-# --init, so nothing could be installed).  Best-effort (chroot has no RNG).
-chroot /work/rootfs pacman-key --init 2>/dev/null || true
-chroot /work/rootfs pacman-key --populate archlinuxarm 2>/dev/null || true
+# Initialize the pacman keyring.  CRITICAL (not best-effort): without a
+# trusted keyring every runtime `pacman -Syu` dies with "signature ... is
+# unknown trust".  The chroot needs /dev/urandom for pacman-key --init to
+# generate its master key, so bind-mount /dev first (this was the C4 root
+# cause chain: init failed silently -> trust never established -> all
+# upgrades broken).  Failures are now LOUD; firstboot also self-heals.
+mkdir -p /work/rootfs/dev
+mount --bind /dev /work/rootfs/dev 2>/dev/null || true
+chroot /work/rootfs pacman-key --init || echo "WARN: pacman-key --init failed"
+if ! chroot /work/rootfs pacman-key --populate archlinuxarm \
+	&& ! chroot /work/rootfs pacman-key --populate archlinux; then
+	echo "WARN: pacman-key --populate failed -- runtime upgrades will fail with unknown trust"
+fi
+umount /work/rootfs/dev 2>/dev/null || true
 
 # --- zsh + oh-my-zsh as the default shell (rootfs base config) ---
 # zsh becomes the login shell, so it MUST be present.  Install it robustly
