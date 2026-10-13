@@ -101,7 +101,7 @@ The stage scripts are grouped by function under `scripts/`:
 | Path | Purpose |
 |---|---|
 | `build-all.sh` | **Entry point** — runs every stage in dependency order |
-| `scripts/build/` | Image pipeline — `build.sh` (kernel + rootfs + U-Boot/FIP), `inspect-official.sh` (official bootloader), `initramfs.sh`, `repack.sh` (assemble the SD image) |
+| `scripts/build/` | Image pipeline — `build.sh` (kernel + rootfs + U-Boot/FIP), `inspect-official.sh` (extracts the official Radxa bootloader → `official-bootloader.img`, **required: only the Radxa-signed BL2+FIP layout boots**), `initramfs.sh`, `repack.sh` (assemble the SD image, verify BL2/FIP placement) |
 | `scripts/config/` | Rootfs config — `rootfs-setup.sh` (base system: packages / keyring / zsh shell / network / sudoers / partition expand), `port-pi.sh` (real Pi `wpa_copy`/`sshswitch`/`userconf`), `wifi-firmware-fix.sh` |
 | `scripts/usb/` | USB gadget — `usb-gadget-composite.sh`, `usb-console-fix.sh`, `usb-serial.sh` |
 | `scripts/debug/` | Diagnostics — `led-boot-status.sh`, `capture-panic.sh`, `pstore-ramoops.sh` |
