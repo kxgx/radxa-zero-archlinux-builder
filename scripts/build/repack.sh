@@ -93,8 +93,8 @@ sync
 SRC_HEAD=$(dd if="$BL" bs=1 count=442 2>/dev/null | sha256sum | cut -d' ' -f1)
 IMG_HEAD=$(dd if=final.img bs=1 count=442 2>/dev/null | sha256sum | cut -d' ' -f1)
 [ "$SRC_HEAD" = "$IMG_HEAD" ] || { echo "FATAL: BL2 head mismatch in final.img"; exit 1; }
-IMG_FIP=$(dd if=final.img bs=1 skip=512 count=16 2>/dev/null | xxd -p | tr -d '\n')
-if [ -z "$IMG_FIP" ] || [ "$IMG_FIP" = "00000000000000000000000000000000" ]; then
+IMG_FIP=$(dd if=final.img bs=1 skip=512 count=8 2>/dev/null | od -An -tx1 | tr -d ' \n')
+if [ -z "$IMG_FIP" ] || [ "$IMG_FIP" = "0000000000000000" ]; then
 	echo "FATAL: no FIP at sector 1 of final.img (wrong bootloader layout)"
 	exit 1
 fi

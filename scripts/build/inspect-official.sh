@@ -15,7 +15,7 @@ ls -la official-bl.bin
 # canonical name consumed by repack.sh (BL2 head @0 + FIP @512, Radxa-signed)
 cp -f official-bl.bin official-bootloader.img
 echo "official bootloader ready: /work/official-bootloader.img"
-echo "first 16 bytes:"; xxd official-bl.bin | head -2
+echo "first 16 bytes:"; od -Ax -tx1 -N 16 official-bl.bin
 echo "=== [5] inspect each partition (find boot FAT) ==="
 for P in 1 2 3; do
   S=$(fdisk -l official.img 2>/dev/null | awk -v p="official.img$P " '$0 ~ p { if ($2 == "*") print $3; else print $2 }')
