@@ -31,7 +31,7 @@ EOF
 # a missing package must not abort the build.
 pacman -r /work/rootfs --config /work/pacman-offline.conf --noconfirm -Sy \
   archlinuxarm-keyring wireless-regdb inetutils less wget openbsd-netcat rsync \
-  cronie git python parted zsh wpa_supplicant sudo 2>/dev/null || true
+  cronie git python parted zsh wpa_supplicant sudo bluez bluez-utils mesa 2>/dev/null || true
 
 # Initialize the pacman keyring.  CRITICAL (not best-effort): without a
 # trusted keyring every runtime `pacman -Syu` dies with "signature ... is
