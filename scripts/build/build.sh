@@ -72,40 +72,70 @@ echo "Rootfs with modules: $(du -sm rootfs | cut -f1) MB"
 
 ### 5. Firmware extras (Radxa Zero WiFi/BT) ##################################
 echo "=== [5/8] Firmware ==="
-[ -d firmware-repo/brcm ] || { rm -rf firmware-repo; git clone -q --depth 1 --filter=blob:none --sparse https://github.com/armbian/firmware firmware-repo; cd firmware-repo; git sparse-checkout set brcm; cd /work; }
+if [ ! -d firmware-repo/brcm ]; then
+  rm -rf firmware-repo
+  # GitHub clone with gh-proxy fallback (download acceleration)
+  git clone -q --depth 1 --filter=blob:none --sparse https://github.com/armbian/firmware firmware-repo \
+    || git clone -q --depth 1 --filter=blob:none --sparse https://v4.gh-proxy.org/https://github.com/armbian/firmware firmware-repo
+  git -C firmware-repo sparse-checkout set brcm meson
+fi
 FW=rootfs/usr/lib/firmware
-mkdir -p "$FW/brcm"
-# Radxa Zero WiFi = BCM43456. The .radxa,zero.* files in armbian/firmware are only
-# 22-byte dedup pointers ("same as upstream generic"), so copy the REAL generic blobs.
-for f in brcmfmac43456-sdio.bin brcmfmac43456-sdio.txt brcmfmac43456-sdio.clm_blob; do
+mkdir -p "$FW/brcm" "$FW/meson/vdec"
+
+# WiFi: Radxa Zero ships AP6212(43430)/AW-CM256SM(43455)/AP6256(43456).
+# The .radxa,zero.* files in armbian/firmware are 22-byte dedup pointers, so
+# copy only REAL blobs (>100B): generic bin/clm/txt + board nvram sources
+# that wifi-firmware-fix.sh falls back to.
+for f in \
+  brcmfmac43430-sdio.bin brcmfmac43430-sdio.clm_blob brcmfmac43430-sdio.txt brcmfmac43430-sdio.AP6212.txt \
+  brcmfmac43455-sdio.bin brcmfmac43455-sdio.clm_blob brcmfmac43455-sdio.txt brcmfmac43455-sdio.AW-CM256SM.txt \
+  brcmfmac43456-sdio.bin brcmfmac43456-sdio.clm_blob brcmfmac43456-sdio.txt; do
   if [ -f "firmware-repo/brcm/$f" ] && [ "$(stat -c%s "firmware-repo/brcm/$f")" -gt 100 ]; then
     cp "firmware-repo/brcm/$f" "$FW/brcm/$f"; echo "fw: $f ($(stat -c%s "$FW/brcm/$f") B)"
   else
-    echo "WARN: missing real blob $f"
+    echo "WARN: missing real WiFi blob $f"
   fi
 done
-# BT: BCM4345C0 UART hcd (generic) -> BCM4345C0.hcd
-if [ -f firmware-repo/brcm/BCM4345C0_003.001.025.0162.0000_Generic_UART_37_4MHz_wlbga_ref_iLNA_iTR_eLG.hcd ]; then
-  cp firmware-repo/brcm/BCM4345C0_003.001.025.0162.0000_Generic_UART_37_4MHz_wlbga_ref_iLNA_iTR_eLG.hcd "$FW/brcm/BCM4345C0.hcd"; echo "fw: BCM4345C0.hcd"
+
+# BT: AP6256 module (BCM4345C0 combo) -- generic UART hcd from armbian/firmware
+BT45=firmware-repo/brcm/BCM4345C0_003.001.025.0162.0000_Generic_UART_37_4MHz_wlbga_ref_iLNA_iTR_eLG.hcd
+if [ -f "$BT45" ] && [ "$(stat -c%s "$BT45")" -gt 100 ]; then
+  cp "$BT45" "$FW/brcm/BCM4345C0.hcd"
+  echo "fw: BCM4345C0.hcd (BT AP6256)"
 fi
-# BT: AP6212 (BCM43430A1) — real hcd is only in the official Radxa image (bcm43438a1.hcd).
-# Mainline hci_bcm requests it as BCM43430A1.hcd (same 4343x family), so extract + rename.
-if [ -f official-root.img ]; then
-  rm -f /work/bcm43438a1.hcd
-  for src in /usr/lib/firmware/brcm/bcm43438a1.hcd /lib/firmware/brcm/bcm43438a1.hcd; do
-    debugfs -R "dump $src /work/bcm43438a1.hcd" official-root.img 2>/dev/null && [ -s /work/bcm43438a1.hcd ] && break
-  done
-  if [ -s /work/bcm43438a1.hcd ]; then
-    cp /work/bcm43438a1.hcd "$FW/brcm/BCM43430A1.hcd"
-    cp /work/bcm43438a1.hcd "$FW/brcm/BCM.hcd"
-    cp /work/bcm43438a1.hcd "$FW/brcm/bcm43438a1.hcd"
-    echo "fw: BCM43430A1.hcd (BT AP6212, from official image $(stat -c%s "$FW/brcm/BCM43430A1.hcd") B)"
-  else
-    echo "WARN: bcm43438a1.hcd not found in official-root.img (BT for AP6212 will be missing)"
-  fi
+
+# BT: AP6212 = BCM43438A1 26MHz (RPi 37.4MHz blobs are the wrong crystal!).
+# Single source of truth: radxa/firmware bcm43438a1.hcd (AGENTS.md §4), which
+# mainline btbcm requests under the name BCM43430A1.hcd.  sha256 is
+# mandatory (R8).  GitHub download: direct first, gh-proxy mirror as fallback.
+BT=/work/bcm43438a1.hcd
+BT_URL=https://raw.githubusercontent.com/radxa/firmware/master/ap6212/bcm43438a1.hcd
+BT_SHA=d396912aa4efa7e0ea93dc6b63b1088619b59676ab53404d14fe79f5c71a5da0
+rm -f "$BT"
+wget -q -O "$BT" "$BT_URL" || wget -q -O "$BT" "https://v4.gh-proxy.org/$BT_URL" || true
+if [ -s "$BT" ] && [ "$(sha256sum "$BT" | cut -d' ' -f1)" = "$BT_SHA" ]; then
+  install -m 644 "$BT" "$FW/brcm/BCM43430A1.hcd"
+  echo "fw: BCM43430A1.hcd (BT AP6212 26MHz, sha256 OK, $(stat -c%s "$FW/brcm/BCM43430A1.hcd") B)"
+else
+  echo "FATAL: BCM43430A1.hcd download missing or sha256 mismatch (R8: firmware must be verified)"
+  exit 1
 fi
-# Meson vdec firmware check
-ls "$FW/meson/vdec/" 2>/dev/null | head -5 || echo "WARN: no meson/vdec firmware in rootfs"
+
+# Meson VPU decode firmware (g12a h264/vp9/...).  R9: skip tiny pointer files.
+for f in firmware-repo/meson/vdec/*.bin; do
+  [ -f "$f" ] || continue
+  [ "$(stat -c%s "$f")" -gt 100 ] || continue
+  cp "$f" "$FW/meson/vdec/"
+  echo "fw: meson/vdec/$(basename "$f")"
+done
+
+# end-of-section assert: nothing may vanish silently (AGENTS.md §7)
+for f in "$FW/brcm/BCM43430A1.hcd" "$FW/brcm/brcmfmac43430-sdio.AP6212.txt" \
+         "$FW/brcm/brcmfmac43455-sdio.AW-CM256SM.txt" "$FW/brcm/brcmfmac43456-sdio.bin"; do
+  [ -s "$f" ] || { echo "FATAL: required firmware missing: $f"; exit 1; }
+done
+[ -n "$(ls -A "$FW/meson/vdec" 2>/dev/null)" ] || { echo "FATAL: meson/vdec firmware missing"; exit 1; }
+ls "$FW/meson/vdec/" | head -5
 
 ### 6. Rootfs configuration ##################################################
 echo "=== [6/8] Rootfs configuration ==="
