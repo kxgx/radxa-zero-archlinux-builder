@@ -90,10 +90,21 @@ for f in \
   brcmfmac43430-sdio.bin brcmfmac43430-sdio.clm_blob brcmfmac43430-sdio.txt brcmfmac43430-sdio.AP6212.txt \
   brcmfmac43455-sdio.bin brcmfmac43455-sdio.clm_blob brcmfmac43455-sdio.txt brcmfmac43455-sdio.AW-CM256SM.txt \
   brcmfmac43456-sdio.bin brcmfmac43456-sdio.clm_blob brcmfmac43456-sdio.txt; do
-  if [ -f "firmware-repo/brcm/$f" ] && [ "$(stat -c%s "firmware-repo/brcm/$f")" -gt 100 ]; then
-    cp "firmware-repo/brcm/$f" "$FW/brcm/$f"; echo "fw: $f ($(stat -c%s "$FW/brcm/$f") B)"
+  src="firmware-repo/brcm/$f"; dst="$FW/brcm/$f"
+  # armbian/firmware dedup entries can be symlinks (the clone keeps the link;
+  # GitHub raw serves the target) and the rootfs may ship its own symlink for
+  # the same name.  Materialise deterministically: drop whatever is at dst and
+  # copy DEREFERENCED, so content lands as a real file at the wanted path.
+  if [ -f "$src" ]; then
+    rm -f "$dst"; cp -L "$src" "$dst"
+  fi
+  # Accept only real final content (>100B after dereference) -- whether it
+  # came from the repo copy or was already present in the rootfs.
+  size=$(stat -Lc%s "$dst" 2>/dev/null || echo 0)
+  if [ "$size" -gt 100 ]; then
+    echo "fw: $f ($size B)"
   else
-    echo "WARN: missing real WiFi blob $f"
+    rm -f "$dst"; echo "WARN: missing real WiFi blob $f (neither repo nor rootfs)"
   fi
 done
 
