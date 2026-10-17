@@ -8,8 +8,14 @@ exec > >(tee -a /work/wifi-firmware-fix.log) 2>&1
 echo "=== wifi-firmware-fix $(date -u) ==="
 FW=/work/rootfs/usr/lib/firmware/brcm
 
-[ -f "$FW/brcmfmac43430-sdio.txt" ] || cp "$FW/brcmfmac43430-sdio.AP6212.txt" "$FW/brcmfmac43430-sdio.txt"
-[ -f "$FW/brcmfmac43455-sdio.txt" ] || cp "$FW/brcmfmac43455-sdio.AW-CM256SM.txt" "$FW/brcmfmac43455-sdio.txt"
+# Copy the generic nvram from the board file only when the source exists:
+# a bare `cp` here aborts the script under set -e when the file is absent.
+if [ ! -f "$FW/brcmfmac43430-sdio.txt" ] && [ -f "$FW/brcmfmac43430-sdio.AP6212.txt" ]; then
+  cp "$FW/brcmfmac43430-sdio.AP6212.txt" "$FW/brcmfmac43430-sdio.txt"
+fi
+if [ ! -f "$FW/brcmfmac43455-sdio.txt" ] && [ -f "$FW/brcmfmac43455-sdio.AW-CM256SM.txt" ]; then
+  cp "$FW/brcmfmac43455-sdio.AW-CM256SM.txt" "$FW/brcmfmac43455-sdio.txt"
+fi
 # 43456 generic .txt already present (added earlier)
 
 # also provide the board-specific name brcmfmac tries first
@@ -19,10 +25,10 @@ for c in 43430 43455 43456; do
   fi
 done
 
-# BT firmware for AP6212 (BCM43438) if the .hcd is available in linux-firmware
-if [ ! -f "$FW/BCM43438A1.hcd" ] && [ -f "$FW/bcm43438-sdio.hcd" ]; then
-  cp "$FW/bcm43438-sdio.hcd" "$FW/BCM43438A1.hcd" 2>/dev/null || true
-fi
+# BT hcd install lives in build.sh §5 (single source of truth, sha256
+# verified, installed as BCM43430A1.hcd).  The old alias block here copied
+# bcm43438-sdio.hcd to BCM43438A1.hcd -- a name the kernel never requests
+# from a different variant (BCM4343A0).  Removed on purpose.
 
 echo "--- WiFi nvram (generic .txt present for each variant):"
 ls "$FW" | grep -E "sdio\.txt|radxa,zero" || true
