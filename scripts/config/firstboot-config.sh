@@ -131,8 +131,10 @@ if [ -n "$CFG_USER" ]; then
   if [ -n "$DEFAULT_USER" ] && [ "$DEFAULT_USER" != "$CFG_USER" ]; then
     usermod -l "$CFG_USER" "$DEFAULT_USER" 2>/dev/null || true
     usermod -d "/home/$CFG_USER" -m "$CFG_USER" 2>/dev/null || true
+    # device groups on the RENAME path too (AGENTS.md §5)
+    usermod -aG wheel,video,render,uucp,input,netdev "$CFG_USER" 2>/dev/null || true
   fi
-  id -u "$CFG_USER" >/dev/null 2>&1 || useradd -m -G wheel -s "$SHELL_BIN" "$CFG_USER" 2>/dev/null || true
+  id -u "$CFG_USER" >/dev/null 2>&1 || useradd -m -G wheel,video,render,uucp,input,netdev -s "$SHELL_BIN" "$CFG_USER" 2>/dev/null || true
   usermod -s "$SHELL_BIN" "$CFG_USER" 2>/dev/null || true
   if [ -n "$CFG_PASSHASH" ]; then
     echo "$CFG_USER:$CFG_PASSHASH" | chpasswd -e 2>/dev/null || true
