@@ -1,5 +1,6 @@
 #!/bin/bash
-# Repack the Radxa Zero image from cached /work state (adds /wifi.conf to FAT BOOT)
+# Repack the Radxa Zero image from cached /work state (FAT BOOT + ext4 root +
+# official bootloader, then verify the BL2/FIP layout).
 set -euo pipefail
 exec > >(tee -a /work/repack.log) 2>&1
 echo "=== repack $(date -u) ==="

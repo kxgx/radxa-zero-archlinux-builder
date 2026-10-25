@@ -191,4 +191,4 @@ rm -f /work/rootfs/etc/systemd/system/multi-user.target.wants/sshd.service
 # drop package cache to keep image slim
 rm -f /work/rootfs/var/cache/pacman/pkg/* 2>/dev/null || true
 
-echo "=== pi-mechanism-setup done ==="
+echo "=== rootfs-setup done ==="

@@ -1,16 +1,16 @@
 # Radxa Zero — Arch Linux Image Builder
 
-Build a bootable **Arch Linux ARM** image for the [Radxa Zero](https://wiki.radxa.com/Zero) single-board computer (Amlogic S905Y2) with a **vanilla mainline Linux kernel** and **Raspberry Pi–style headless configuration**.
+Build a bootable **Arch Linux ARM** image for the [Radxa Zero](https://wiki.radxa.com/Zero) single-board computer (Amlogic S905Y2) with a **vanilla mainline Linux kernel** and **headless, Raspberry Pi–style first boot**.
 
-Configure WiFi, SSH, and the default user by dropping plain-text files onto the boot partition from Windows — **no monitor, keyboard, or serial adapter required**.
+Configure WiFi, SSH, the default user, hostname and timezone by dropping one plain-text **`config.txt`** onto the boot partition from Windows — **no monitor, keyboard, or serial adapter required**.
 
 ## Highlights
 
 - **Vanilla mainline kernel** (Armbian `linux-meson64-edge` config) — no vendor BSP blobs
 - **Official Radxa bootloader** (BootROM-compatible, signed)
 - **Arch Linux ARM** rootfs (AArch64, `pacman` ready)
-- **Raspberry Pi–style headless config** — `wpa_supplicant.conf` / `ssh` / `userconf.txt` on the boot partition (real `raspberrypi-net-mods` / `raspberrypi-sys-mods` / `userconf-pi` code, minimally ported)
-- **USB gadget console** — the USB-C OTG port enumerates as a USB NIC (NCM, `192.168.100.1`) + a serial console (ACM)
+- **Headless first-boot config** — one `config.txt` on the BOOT partition (WiFi / SSH / user with hashed password / hostname / timezone), applied on first boot and then deleted
+- **USB gadget console** — the USB-C OTG port enumerates as a USB NIC (NCM, `192.168.100.1`, built-in DHCP server) **and** as a serial console (ACM, `ttyGS0`, with login prompt)
 - **WiFi + Bluetooth** firmware for the onboard AP6212 (BCM43430) module
 - **Panfrost GPU**, HDMI + audio, HW video decode (H.264/HEVC/VP9)
 
@@ -22,44 +22,54 @@ Configure WiFi, SSH, and the default user by dropping plain-text files onto the 
 | Kernel | Vanilla mainline Linux (Armbian meson64-edge config) |
 | Device tree | `amlogic/meson-g12a-radxa-zero.dtb` |
 | Rootfs | Arch Linux ARM (AArch64) + `wpa_supplicant` + `sudo` |
-| Boot config | Raspberry Pi–style files on the FAT `BOOT` partition |
+| Boot config | `BOOT/config.txt` — unified first-boot settings, applied then deleted |
 | USB | NCM network + ACM serial composite gadget |
 | WiFi / BT | AP6212 module (BCM43430 WiFi / BCM43438A1 Bluetooth) |
 
 ## Headless configuration
 
-After flashing, open the **BOOT** partition (FAT32, editable in Notepad). Three files control first-boot setup:
+After flashing, open the **BOOT** partition (FAT32, editable in Notepad) and edit `config.txt`: one `key=value` per line, `#` starts a comment.
 
-| File | Effect | Source mechanism |
-|---|---|---|
-| `wpa_supplicant.conf` | Connect to WiFi on boot | `raspberrypi-net-mods` `wpa_copy` |
-| `ssh` (or `ssh.txt`, empty) | Enable SSH (off by default) | `raspberrypi-sys-mods` `sshswitch` |
-| `userconf.txt` | Line 1 = `username:password`, renames the default `alarm` user | `userconf-pi` `userconf` |
-| `hostname.txt` | Set the system hostname | first-boot hook |
+| Key | Effect |
+|---|---|
+| `hostname=radxa-zero` | System hostname |
+| `timezone=Asia/Shanghai` | `/etc/localtime` |
+| `ssh=1` | Generate SSH host keys and enable `sshd` (the shipped template sets `ssh=1`; use `ssh=0` to keep it off) |
+| `wifi_ssid=MyNetwork` | WiFi SSID |
+| `wifi_country=CN` | WiFi regulatory country |
+| `wifi_psk=...` | WiFi passphrase, or the raw 64-hex PSK (64-hex is written unquoted) |
+| `username=xg` | Rename the shipped `alarm` (uid 1000) user — or create that user if absent |
+| `password_hash=$6$...` | SHA-512 crypt hash for that user (`openssl passwd -6`); never plaintext |
 
-**WiFi example** (`wpa_supplicant.conf`):
-```
-country=CN
-ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-update_config=1
-network={
-    ssid="your-wifi-ssid"
-    psk="your-wifi-password"
-}
+Example `config.txt`:
+```ini
+hostname=radxa-zero
+timezone=Asia/Shanghai
+ssh=1
+wifi_ssid=your-wifi-ssid
+wifi_country=CN
+wifi_psk=your-wifi-password
+username=xg
+password_hash=$6$...
 ```
 
-**User example** (`userconf.txt`, first line):
+Generate the password hash on any Linux/macOS machine or in Git Bash:
+```bash
+openssl passwd -6 'your-password'
 ```
-bob:my-password
-```
-(Plain text or a `openssl passwd -6` hash; the user is added to the `wheel` group for `sudo`.)
 
-The files are consumed on first boot (deleted afterwards, same as a real Raspberry Pi) so credentials don't linger on the FAT partition.
+Notes:
+- `config.txt` is **consumed and deleted on first boot** so credentials don't linger on the FAT partition. Drop a new `config.txt` on BOOT and reboot to apply it again.
+- Set `password_hash` whenever you set `username`: without it the renamed user keeps the base image's default password (and a newly created account has no usable password).
+- The configured user is added to `wheel,video,render,uucp,input,netdev`; sudo works through the `wheel` sudoers entry.
+- BOOT is also mounted at `/boot/firmware` at runtime.
+- `config.txt` here is the image's first-boot settings file (applied by `boot-config-apply.service`), **not** the Raspberry Pi firmware boot config — kernel arguments live in `extlinux/extlinux.conf`.
 
 ### First-boot improvements (automatic)
 
-- **Partition auto-expand** — the root partition + filesystem grow to fill the whole SD card on first boot (`expand-rootfs.service`, non-interactive `sfdisk`+`partx`+`resize2fs`; always succeeds silently so the system never enters `degraded`).
-- **Fresh pacman keyring** — `pacman-key --init && pacman-key --populate archlinuxarm` runs at build time so `pacman` can install packages out of the box.
+- **Applies `config.txt`** — timezone, hostname, SSH (fresh host keys), WiFi, user/password hash — then deletes the file.
+- **Partition auto-expand** — the root partition + filesystem grow to fill the whole SD card on first boot (`expand-rootfs.service`, non-interactive `sfdisk` + `partx` + `resize2fs`; always succeeds silently so the system never enters `degraded`).
+- **Pacman keyring self-heal** — `pacman-key --init && pacman-key --populate archlinuxarm` runs at build time where possible; the first-boot hook repeats it offline-safe so `pacman -Syu` never fails with "unknown trust".
 
 ## Getting started
 
@@ -70,12 +80,14 @@ xz -dc radxa-zero-archlinux-*.img.xz | sudo dd of=/dev/sdX bs=4M status=progress
 Or use [balenaEtcher](https://etcher.balena.io) on Windows/macOS.
 
 ### 2. Configure
-Pop the SD card back into your PC, edit the BOOT partition files (WiFi / `ssh` / `userconf.txt`), then eject.
+Pop the SD card back into your PC, edit `BOOT/config.txt` (WiFi / SSH / user), then eject.
 
 ### 3. Connect (any of these)
 - **USB serial** — plug the USB-C **OTG** port into your PC; a COM port appears (115200 8N1). Log in as `root` / `root`.
-- **USB network SSH** — the same cable also shows a USB NIC with a built-in DHCP server: the PC gets `192.168.100.x` automatically, then `ssh root@192.168.100.1`. Zero-config fallback (no DHCP, no admin rights needed): `ssh root@169.254.31.200` (APIPA link-local). Or set your PC statically to `192.168.100.2/24`.
-- **WiFi SSH** — find `radxa-zero` in your router's DHCP list, then `ssh root@<ip>`.
+- **USB network SSH** — the same cable also shows a USB NIC with a built-in DHCP server: the PC gets `192.168.100.x` automatically, then `ssh xg@192.168.100.1` (use the user you configured — password SSH for `root` is disabled by default). Zero-config fallback (no DHCP, no admin rights needed): `ssh xg@169.254.31.200` (APIPA link-local). Or set your PC statically to `192.168.100.2/24`.
+- **WiFi SSH** — find `radxa-zero` in your router's DHCP list, then `ssh xg@<ip>`.
+
+> **Note:** released images up to v0.1.8 do not enable the USB serial login prompt (the gadget itself works). Current `main` enables `serial-getty@ttyGS0`; until a release contains that fix, use the USB NIC + SSH on v0.1.8.
 
 ## Building from source
 
@@ -101,11 +113,12 @@ The stage scripts are grouped by function under `scripts/`:
 | Path | Purpose |
 |---|---|
 | `build-all.sh` | **Entry point** — runs every stage in dependency order |
-| `scripts/build/` | Image pipeline — `build.sh` (kernel + rootfs + U-Boot/FIP), `inspect-official.sh` (extracts the official Radxa bootloader → `official-bootloader.img`, **required: only the Radxa-signed BL2+FIP layout boots**), `initramfs.sh`, `repack.sh` (assemble the SD image, verify BL2/FIP placement) |
-| `scripts/config/` | Rootfs config — `rootfs-setup.sh` (base system: packages / keyring / zsh shell / network / sudoers / partition expand), `port-pi.sh` (real Pi `wpa_copy`/`sshswitch`/`userconf`), `wifi-firmware-fix.sh` |
-| `scripts/usb/` | USB gadget — `usb-gadget-composite.sh`, `usb-console-fix.sh`, `usb-serial.sh` |
+| `scripts/build/` | Image pipeline — `build.sh` (kernel + rootfs + firmware + U-Boot/FIP), `inspect-official.sh` (extracts the official Radxa bootloader → `official-bootloader.img`, **required: only the Radxa-signed BL2+FIP layout boots**), `initramfs.sh`, `repack.sh` (assemble the SD image, verify BL2/FIP placement) |
+| `scripts/config/` | Rootfs config — `rootfs-setup.sh` (base system: packages / keyring / zsh shell / network / sudoers / partition expand), `firstboot-config.sh` (installs the `BOOT/config.txt` first-boot hook), `wifi-firmware-fix.sh` |
+| `scripts/usb/` | USB gadget — `usb-gadget-composite.sh` (NCM + ACM composite, used by the build; `usb-serial.sh` / `usb-console-fix.sh` are older single-function variants) |
 | `scripts/debug/` | Diagnostics — `led-boot-status.sh`, `capture-panic.sh`, `pstore-ramoops.sh` |
 | `Dockerfile` | Cross-toolchain build container |
+| `AGENTS.md` | Hard constraints for agents/humans changing the repository |
 
 ## Hardware support (mainline)
 
@@ -116,7 +129,7 @@ The stage scripts are grouped by function under `scripts/`:
 - **Video decode** — H.264 / HEVC / VP9 (V4L2 stateless, `meson-vdec`)
 - **USB** — DWC2 (gadget) + DWC3 (host); SD / eMMC; UART / I2C / SPI / PWM / ADC; Amlogic crypto engine
 
-> Mainline has **no hardware video encoding**. `config.txt` / `cmdline.txt` are Raspberry Pi firmware conventions and don't apply here — kernel arguments live in `extlinux/extlinux.conf`.
+> Mainline has **no hardware video encoding**. Kernel arguments live in `extlinux/extlinux.conf`; there is no Raspberry Pi firmware stage. (`BOOT/config.txt` is only the first-boot settings file described above.)
 
 ## WiFi module variants
 
@@ -131,5 +144,5 @@ The Radxa Zero ships with one of three WiFi modules. All are supported (firmware
 ## Notes
 
 - Only the **USB-C OTG** port provides the gadget (serial + network); the other USB-C is host-only. Use a **data** cable.
-- SSH is disabled by default (Raspberry Pi semantics): drop an empty `ssh` file on BOOT to enable it.
-- Default credentials: `root` / `root` (or the user you create via `userconf.txt`).
+- SSH is enabled by the shipped `config.txt` template (`ssh=1`); set `ssh=0` or remove the key to keep it disabled. SSH host keys are regenerated on first boot.
+- Default credentials: `root` / `root` on the local and USB serial console. Over SSH, log in as the user you configured — `root` password login is disabled by default (root key login works once you install a key).

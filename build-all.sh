@@ -11,7 +11,7 @@
 #
 # Stage scripts are grouped by function under scripts/:
 #   scripts/build/   - image pipeline: bootloader, kernel+rootfs, initramfs, assembly
-#   scripts/config/  - rootfs config + Raspberry Pi-style headless config + WiFi
+#   scripts/config/  - rootfs config + unified config.txt first-boot hook + WiFi
 #   scripts/usb/     - USB gadget (network + serial console)
 #   scripts/debug/   - diagnostics (LED, optional panic capture)
 set -euo pipefail
