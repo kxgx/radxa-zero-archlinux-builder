@@ -52,25 +52,33 @@ jobs:
       - name: 1. Shell 语法检查 (bash -n)
         run: |
           FAIL=0
-          for f in *.sh; do
+          mapfile -t FILES < <(git ls-files '*.sh')
+          for f in "${FILES[@]}"; do
             bash -n "$f" || { echo "SYNTAX ERROR: $f"; FAIL=1; }
           done
-          [ "$FAIL" = 0 ] && echo "OK: all scripts parse"
+          [ "$FAIL" = 0 ] && echo "OK: all ${#FILES[@]} scripts parse"
           exit $FAIL
 
       - name: 2. ShellCheck 静态分析（错误级）
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck --severity=error *.sh && echo "OK: shellcheck clean"
+          FAIL=0
+          mapfile -t FILES < <(git ls-files '*.sh')
+          for f in "${FILES[@]}"; do
+            shellcheck --severity=error "$f" || { echo "SHELLCHECK ERROR: $f"; FAIL=1; }
+          done
+          [ "$FAIL" = 0 ] && echo "OK: shellcheck clean on ${#FILES[@]} scripts"
+          exit $FAIL
 
       - name: 3. 脚本规范检查（shebang + LF 换行）
         run: |
           FAIL=0
-          for f in *.sh; do
+          mapfile -t FILES < <(git ls-files '*.sh')
+          for f in "${FILES[@]}"; do
             head -1 "$f" | grep -q '^#!' || { echo "FAIL: $f missing shebang"; FAIL=1; }
             if file "$f" | grep -q CRLF; then echo "FAIL: $f has CRLF line endings (breaks on Linux)"; FAIL=1; fi
           done
-          [ "$FAIL" = 0 ] && echo "OK: shebangs + LF present"
+          [ "$FAIL" = 0 ] && echo "OK: shebangs + LF present in ${#FILES[@]} scripts"
           exit $FAIL
 
       - name: 4. 机密扫描（禁止硬编码密码/私钥）
