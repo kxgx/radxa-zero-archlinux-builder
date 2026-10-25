@@ -6,7 +6,7 @@ Configure WiFi, SSH, the default user, hostname and timezone by dropping one pla
 
 ## Highlights
 
-- **Vanilla mainline kernel** (Armbian `linux-meson64-edge` config) — no vendor BSP blobs
+- **Vanilla mainline kernel** (Armbian `linux-meson64-edge` config) — the version is resolved from kernel.org at build time, so the image tracks mainline automatically; no vendor BSP blobs
 - **Official Radxa bootloader** (BootROM-compatible, signed)
 - **Arch Linux ARM** rootfs (AArch64, `pacman` ready)
 - **Headless first-boot config** — one `config.txt` on the BOOT partition (WiFi / SSH / user with hashed password / hostname / timezone), applied on first boot and then deleted
@@ -19,7 +19,7 @@ Configure WiFi, SSH, the default user, hostname and timezone by dropping one pla
 | Component | Details |
 |---|---|
 | Bootloader | Official Radxa bootloader + `extlinux` (distro boot) |
-| Kernel | Vanilla mainline Linux (Armbian meson64-edge config) |
+| Kernel | Vanilla mainline Linux — version auto-resolved from kernel.org (`latest` / `stable`) |
 | Device tree | `amlogic/meson-g12a-radxa-zero.dtb` |
 | Rootfs | Arch Linux ARM (AArch64) + `wpa_supplicant` + `sudo` |
 | Boot config | `BOOT/config.txt` — unified first-boot settings, applied then deleted |
@@ -87,7 +87,7 @@ Pop the SD card back into your PC, edit `BOOT/config.txt` (WiFi / SSH / user), t
 - **USB network SSH** — the same cable also shows a USB NIC with a built-in DHCP server: the PC gets `192.168.100.x` automatically, then `ssh xg@192.168.100.1` (use the user you configured — password SSH for `root` is disabled by default). Zero-config fallback (no DHCP, no admin rights needed): `ssh xg@169.254.31.200` (APIPA link-local). Or set your PC statically to `192.168.100.2/24`.
 - **WiFi SSH** — find `radxa-zero` in your router's DHCP list, then `ssh xg@<ip>`.
 
-> **Note:** released images up to v0.1.8 do not enable the USB serial login prompt (the gadget itself works). Current `main` enables `serial-getty@ttyGS0`; until a release contains that fix, use the USB NIC + SSH on v0.1.8.
+> **Note:** v0.1.8 and earlier releases do not enable the USB serial login prompt (the gadget itself works). v0.1.9 and later enable `serial-getty@ttyGS0`; on older images use the USB NIC + SSH.
 
 ## Building from source
 
@@ -104,7 +104,21 @@ docker run --rm \
   rz-builder bash /host/build-all.sh
 ```
 
-The finished image is written to `/work/radxa-zero-archlinux-*.img.xz` (mounted from `rz-build`).
+The finished image is written to `/work/radxa-zero-archlinux-*.img.xz` (mounted from `rz-build`); the filename carries the detected kernel release.
+
+**Kernel version is not pinned.** `build.sh` reads [`https://www.kernel.org/releases.json`](https://www.kernel.org/releases.json) at build time:
+
+- `KERNEL_CHANNEL=latest` (default) — newest **mainline** release, including `-rc` kernels
+- `KERNEL_CHANNEL=stable` — newest **stable** point release
+
+```bash
+# follow the stable channel instead of mainline
+docker run --rm -e KERNEL_CHANNEL=stable \
+  -v rz-build:/work -v "$PWD":/host:ro \
+  rz-builder bash /host/build-all.sh
+```
+
+For a reproducible/pinned build only, set `-e KERNEL_VERSION=7.3` (or any version). The CI build matrix runs both channels automatically on every release tag.
 
 ## Project layout
 

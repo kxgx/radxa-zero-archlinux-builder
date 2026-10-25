@@ -8,9 +8,11 @@ bootable image or regressing driver/firmware support.
 **vanilla mainline kernel**, official Radxa-signed bootloader, and a
 single-file (`BOOT/config.txt`) headless first-boot config.
 
-**Baseline (as of v0.1.8 / `main`):** kernel `7.3-rc6` (CI also builds the
-`7.2.9` stable variant), Armbian `linux-meson64-edge.config`, DTB
-`meson-g12a-radxa-zero.dtb`, official Radxa Debian `b23` bootloader.
+**Baseline (as of v0.1.9 / `main`):** kernel version **resolved from
+kernel.org at build time** (`KERNEL_CHANNEL=latest` = newest mainline, incl.
+`-rc`; `stable` = newest stable point release — no pinned version in the repo),
+Armbian `linux-meson64-edge.config`, DTB `meson-g12a-radxa-zero.dtb`, official
+Radxa Debian `b23` bootloader.
 
 ---
 
@@ -21,7 +23,7 @@ single-file (`BOOT/config.txt`) headless first-boot config.
 | **R1** | Do **not** change bootloader extraction/write (`inspect-official.sh`, `repack.sh` BL2+FIP `dd` + verify). | S905Y2 BootROM only accepts a **Radxa-signed BL2 head @ sector 0 + FIP @ sector 1**. Wrong layout = unbootable (v0.1.4 CI incident). |
 | **R2** | Do **not** change partition offsets or `extlinux.conf` `fdt`/`append` lines unless the task is exactly that. | Working on the device now. |
 | **R3** | Do **not** merge or copy large chunks from `wip-fixes`. | That branch is mid-bisect of a ~2s boot failure and renames stages. |
-| **R4** | Do **not** change default `KERNEL_VERSION` or the Armbian config URL without an explicit task. | 7.3-rc6 + meson64-edge is the shipped baseline. |
+| **R4** | Do **not** hardcode kernel versions (in `build.sh` or the CI matrix). The version is resolved from `https://www.kernel.org/releases.json`: `KERNEL_CHANNEL=latest` (mainline, incl. `-rc`) or `stable`. `KERNEL_VERSION=<ver>` is an explicit pin for reproducible/bisect builds only. Do not change the Armbian config URL without an explicit task. | The image must follow mainline as it advances; pinned versions go stale (v0.1.9 still built 7.2.9 / 7.3-rc6 while 7.3 / 7.2.12 were current). |
 | **R5** | Device tree: **append-only**. Never delete/rewrite existing nodes. | Precedent: `scripts/debug/led-boot-status.sh`. A bad DTS drop kills GPU/UART/mmc. |
 | **R6** | Do not remove `set -euo pipefail` to “make it pass”. Use `if` / explicit `\|\| true`. | The pipeline relies on `set -e` to catch errors. |
 | **R7** | Do not make mainline U-Boot the default bootloader. | BootROM rejects it; `repack.sh` hard-fails without official BL. |
@@ -37,7 +39,7 @@ single-file (`BOOT/config.txt`) headless first-boot config.
 ```
 build-all.sh
   ├─ scripts/build/inspect-official.sh   # official Radxa bootloader only
-  ├─ scripts/build/build.sh              # kernel + rootfs + FIRMWARE + U-Boot/FIP
+  ├─ scripts/build/build.sh              # kernel(version from kernel.org) + rootfs + FIRMWARE + U-Boot/FIP
   ├─ scripts/config/rootfs-setup.sh      # pacman packages, keyring, users, net
   ├─ scripts/config/firstboot-config.sh  # config.txt → wifi/ssh/user/hostname
   ├─ scripts/config/wifi-firmware-fix.sh # WiFi nvram names
@@ -70,7 +72,7 @@ watchdog, RTC, PWM, GPIO, SARADC, RNG, eFuse, CEC.
 
 ### Known gaps (build-level)
 
-All items below are fixed in v0.1.8 except the last, which landed after it.
+All items below are fixed in v0.1.8 except the USB serial one, fixed in v0.1.9.
 
 | Gap | Root cause | Fix location |
 |-----|------------|--------------|
@@ -79,7 +81,7 @@ All items below are fixed in v0.1.8 except the last, which landed after it.
 | **meson VPU decode firmware** | `ls` check only; sparse-checkout is `brcm` only | `build.sh` §5 + `sparse-checkout set brcm meson` |
 | **User not in device groups** | `useradd -G wheel` only; rename path never adds groups | `firstboot-config.sh` |
 | **No bluez/mesa** | Not in pacman list | `rootfs-setup.sh` best-effort list |
-| **USB serial: no login prompt** | `usb-gadget-composite.sh` creates the ACM tty but never enabled `serial-getty@ttyGS0` | `usb-gadget-composite.sh` (fixed on `main`, not yet in a release) |
+| **USB serial: no login prompt** | `usb-gadget-composite.sh` creates the ACM tty but never enabled `serial-getty@ttyGS0` | `usb-gadget-composite.sh` (fixed in v0.1.9) |
 
 ### Non-gaps (do not “fix”)
 - `panfrost: no regulator (mali)` — board has no dedicated GPU rail; GPU still works.
@@ -155,6 +157,8 @@ Change **only** these when implementing the driver/firmware checklist:
 ## 7. Verification checklist (run after changes)
 
 - [ ] `bash -n` on every edited script (CI runs it on all `git ls-files '*.sh'`)
+- [ ] Kernel: no pinned version in `build.sh` / CI matrix; `build.sh` logs the
+      kernel.org channel + resolved version
 - [ ] `git diff` touches only the allowed files
 - [ ] BT: `BCM43430A1.hcd` present in rootfs + sha256 matches the table above
 - [ ] No `BCM43438A1.hcd` written anywhere
@@ -178,9 +182,16 @@ while IFS= read -r f; do bash -n "$f" || echo "FAIL: $f"; done < <(git ls-files 
 # ShellCheck at error level (CI severity)
 while IFS= read -r f; do shellcheck --severity=error "$f"; done < <(git ls-files '*.sh')
 
-# Full image build
+# Full image build (kernel version resolved from kernel.org: latest mainline)
 docker build -t rz-builder .
 docker run --rm -v rz-build:/work -v "$PWD":/host:ro rz-builder bash /host/build-all.sh
+
+# Same, but follow the stable channel / pin a version for bisecting
+docker run --rm -e KERNEL_CHANNEL=stable -v rz-build:/work -v "$PWD":/host:ro rz-builder bash /host/build-all.sh
+docker run --rm -e KERNEL_VERSION=7.3 -v rz-build:/work -v "$PWD":/host:ro rz-builder bash /host/build-all.sh
+
+# What build.sh will resolve right now
+wget -qO- https://www.kernel.org/releases.json | python3 -c 'import json,sys; [print(r["moniker"], r["version"], r["source"]) for r in json.load(sys.stdin)["releases"] if r["moniker"] in ("mainline", "stable")]'
 
 # Verify BT firmware after extract
 sha256sum rootfs/usr/lib/firmware/brcm/BCM43430A1.hcd
@@ -209,6 +220,11 @@ ls rootfs/etc/systemd/system/multi-user.target.wants/ | grep serial-getty
    `/dev/ttyGS0`; a login prompt needs `serial-getty@ttyGS0` enabled (R11).
    Verify it in the built rootfs before releasing — the v0.1.8 image shipped
    without it and looked like a "dead" serial console.
+7. **kernel.org `releases.json` is the source of truth for the kernel version.**
+   It also lists `longterm` and `linux-next`; only `mainline` / `stable` are
+   used. The per-release `source` URL is authoritative (it already contains
+   `v<major>.x/testing/` for `-rc` kernels) — do not hand-build paths, and do
+   not re-pin a version in CI to “make the build stable”.
 
 ---
 
