@@ -106,9 +106,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 稳定版：当前最新稳定内核；最新版：最新主线（含 RC）
-          - { variant: stable, kernel: 7.2.9 }
-          - { variant: latest, kernel: 7.3-rc6 }
+          # 内核版本由 build.sh 从 kernel.org/releases.json 自动解析，不写死：
+          # stable = 最新稳定版；latest = 最新主线（含 RC），随主线更新
+          - { variant: stable, channel: stable }
+          - { variant: latest, channel: latest }
     permissions:
       contents: read
     steps:
@@ -122,9 +123,9 @@ jobs:
 
       - name: 完整镜像构建（build-all.sh）
         env:
-          KERNEL_VERSION: ${{ matrix.kernel }}
+          KERNEL_CHANNEL: ${{ matrix.channel }}
           VARIANT: ${{ matrix.variant }}
-        run: docker run --rm -e KERNEL_VERSION -e VARIANT -v rz-build:/work -v "$PWD":/host:ro rz-builder bash /host/build-all.sh
+        run: docker run --rm -e KERNEL_CHANNEL -e VARIANT -v rz-build:/work -v "$PWD":/host:ro rz-builder bash /host/build-all.sh
 
       - name: 自动检测内核版本
         id: kver

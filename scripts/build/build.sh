@@ -1,6 +1,7 @@
 #!/bin/bash
 # Radxa Zero (S905Y2) mainline image builder
-# Kernel 7.3-rc6 (vanilla mainline, Armbian meson64 edge config) + mainline U-Boot
+# Kernel: kernel.org mainline (version resolved at build time), Armbian meson64
+# edge config + mainline U-Boot
 # Rootfs: Arch Linux ARM generic AArch64
 set -euo pipefail
 
@@ -13,17 +14,62 @@ echo "=== Build start: $(date -u) | jobs=$NPROC ==="
 
 cd /work
 
-### 1. Kernel source (KERNEL_VERSION: 7.2.9 stable or 7.3-rc6) ###############
-KVER="${KERNEL_VERSION:-7.3-rc6}"
-echo "=== [1/8] Download kernel $KVER ==="
-# re-download if the cached tree is a different version (e.g. stable vs latest)
+### 1. Kernel source: follow kernel.org mainline releases ####################
+# Version policy (no hardcoded kernel version):
+#   KERNEL_CHANNEL=latest (default) -> kernel.org `mainline` release (newest, incl. -rc)
+#   KERNEL_CHANNEL=stable           -> kernel.org `stable` release (newest stable point release)
+#   KERNEL_VERSION=<version>        -> explicit override, for pinning/bisecting only
+# Version + tarball URL are read from https://www.kernel.org/releases.json at
+# build time, so the image follows mainline as it advances.
+RELEASES_URL=https://www.kernel.org/releases.json
+RELEASES_JSON=/work/kernel-releases.json
+KERNEL_CHANNEL="${KERNEL_CHANNEL:-latest}"
+
+resolve_kernel_from_releases() {
+  python3 - "$RELEASES_JSON" "$1" <<'PY'
+import json, sys
+path, channel = sys.argv[1], sys.argv[2]
+channels = {"latest": "mainline", "mainline": "mainline", "edge": "mainline", "stable": "stable"}
+moniker = channels.get(channel)
+if moniker is None:
+    sys.exit(f"FATAL: unknown KERNEL_CHANNEL '{channel}' (use latest|stable)")
+with open(path) as f:
+    data = json.load(f)
+for rel in data.get("releases", []):
+    if rel.get("moniker") == moniker:
+        print(rel["version"])
+        print(rel.get("source") or "")
+        sys.exit(0)
+sys.exit(f"FATAL: no '{moniker}' release entry in {path}")
+PY
+}
+
+KERNEL_URL=""
+if [ -n "${KERNEL_VERSION:-}" ]; then
+  KVER="$KERNEL_VERSION"
+  echo "=== [1/8] Kernel $KVER (explicit KERNEL_VERSION override) ==="
+else
+  rm -f "$RELEASES_JSON"
+  wget -q -O "$RELEASES_JSON" "$RELEASES_URL" || { echo "FATAL: cannot fetch $RELEASES_URL"; exit 1; }
+  mapfile -t _kinfo < <(resolve_kernel_from_releases "$KERNEL_CHANNEL")
+  KVER="${_kinfo[0]:-}"
+  KERNEL_URL="${_kinfo[1]:-}"
+  [ -n "$KVER" ] || { echo "FATAL: could not resolve kernel version for channel '$KERNEL_CHANNEL'"; exit 1; }
+  echo "=== [1/8] Kernel $KVER (kernel.org channel: $KERNEL_CHANNEL) ==="
+fi
+
+# re-download if the cached tree is a different version (a new mainline release)
 if [ ! -d linux-src ] || [ "$(cat linux-src/.kver 2>/dev/null)" != "$KVER" ]; then
   rm -rf linux-src linux-*.tar.*
   mkdir -p linux-src
-  # stable releases live in v7.x/, release candidates in v7.x/testing/.
+  # Prefer the exact tarball URL from releases.json; fall back to the canonical
+  # v<major>.x/[testing/] paths and the git.kernel.org snapshot for -rc kernels.
+  KMAJOR="${KVER%%.*}"
+  [ -n "$KERNEL_URL" ] || KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v${KMAJOR}.x/linux-${KVER}.tar.xz"
   # Download to a fixed temp name (avoids wget .1 suffixes and glob ambiguity).
-  ( wget -q -O /work/linux-kernel.tar "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-${KVER}.tar.xz" \
-    || wget -q -O /work/linux-kernel.tar "https://cdn.kernel.org/pub/linux/kernel/v7.x/testing/linux-${KVER}.tar.xz" \
+  ( wget -q -O /work/linux-kernel.tar "$KERNEL_URL" \
+    || wget -q -O /work/linux-kernel.tar "https://cdn.kernel.org/pub/linux/kernel/v${KMAJOR}.x/linux-${KVER}.tar.xz" \
+    || wget -q -O /work/linux-kernel.tar "https://cdn.kernel.org/pub/linux/kernel/v${KMAJOR}.x/testing/linux-${KVER}.tar.xz" \
     || wget -q -O /work/linux-kernel.tar "https://git.kernel.org/torvalds/t/linux-${KVER}.tar.gz" ) || { echo "FATAL: kernel $KVER download failed"; exit 1; }
   tar xf /work/linux-kernel.tar -C linux-src --strip-components=1
   rm -f /work/linux-kernel.tar
