@@ -1,7 +1,8 @@
 #!/bin/bash
 # USB gadget composite: NCM (network) + ACM (serial) on the USB-C OTG port.
 # This is the official Radxa approach (rsetup -> Hardware -> USB OTG services:
-# radxa-ncm@*.* recommended).  Plug into a PC -> USB NIC (SSH) + COM port.
+# radxa-ncm@*.* recommended).  Plug into a PC -> USB NIC (SSH) + COM port
+# (login prompt via serial-getty@ttyGS0).
 set -euo pipefail
 exec > >(tee -a /work/usb-gadget-composite.log) 2>&1
 echo "=== usb-gadget-composite $(date -u) ==="
@@ -81,6 +82,12 @@ ln -sf /etc/systemd/system/usb-gadget.service "$R/etc/systemd/system/multi-user.
 rm -f "$R/etc/modules-load.d/gadget-serial.conf" \
       "$R/etc/systemd/system/multi-user.target.wants/usb-gadget-console.service" \
       "$R/etc/systemd/system/usb-gadget-console.service"
+
+# Login prompt on the USB serial port.  The ACM function only creates
+# /dev/ttyGS0; without this getty the PC sees a COM port but never gets a
+# login: prompt.  (serial-getty@ttyAML0 is auto-generated from console=.)
+ln -sf /usr/lib/systemd/system/serial-getty@.service \
+       "$R/etc/systemd/system/multi-user.target.wants/serial-getty@ttyGS0.service"
 
 # --- network: usb0 DHCP server + fallback IPs so the PC can SSH over USB ---
 # DHCPServer=yes in [Network] is REQUIRED on systemd 261+: the [DHCPServer]
